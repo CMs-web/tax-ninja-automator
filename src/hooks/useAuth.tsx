@@ -2,14 +2,19 @@
 import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from '@/hooks/use-toast';
+import { Session, User } from '@supabase/supabase-js';
 
-interface User {
+interface UserProfile {
   id: string;
   email: string;
+  business_name?: string;
+  phone?: string;
+  gstin?: string;
 }
 
 interface AuthContextType {
-  user: User | null;
+  user: UserProfile | null;
+  session: Session | null;
   login: (email: string, password: string) => Promise<{ error: Error | null }>;
   logout: () => Promise<void>;
   loading: boolean;
@@ -19,53 +24,46 @@ interface AuthContextType {
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export const AuthProvider = ({ children }: { children: ReactNode }) => {
-  const [user, setUser] = useState<User | null>(null);
+  const [user, setUser] = useState<UserProfile | null>(null);
+  const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
   const { toast } = useToast();
 
   useEffect(() => {
-    const getCurrentSession = async () => {
-      setLoading(true);
-      
-      try {
-        // Get current session
-        const { data, error } = await supabase.auth.getSession();
+    // Set up auth state listener FIRST
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(
+      (event, currentSession) => {
+        console.log("Auth state changed:", event);
+        setSession(currentSession);
+        setUser(currentSession?.user ? {
+          id: currentSession.user.id,
+          email: currentSession.user.email || '',
+          business_name: currentSession.user.user_metadata.business_name,
+          phone: currentSession.user.user_metadata.phone,
+          gstin: currentSession.user.user_metadata.gstin
+        } : null);
         
-        if (error) {
-          throw error;
-        }
-        
-        if (data && data.session) {
-          setUser({
-            id: data.session.user.id,
-            email: data.session.user.email || '',
-          });
-        }
-      } catch (error) {
-        console.error("Session error:", error);
-      } finally {
+        // Update loading state
         setLoading(false);
       }
-    };
+    );
 
-    getCurrentSession();
-
-    // Listen for auth changes
-    const { data: authListener } = supabase.auth.onAuthStateChange(async (event, session) => {
-      if (session) {
-        setUser({
-          id: session.user.id,
-          email: session.user.email || '',
-        });
-      } else {
-        setUser(null);
-      }
+    // THEN check for existing session
+    supabase.auth.getSession().then(({ data: { session: currentSession } }) => {
+      setSession(currentSession);
+      setUser(currentSession?.user ? {
+        id: currentSession.user.id,
+        email: currentSession.user.email || '',
+        business_name: currentSession.user.user_metadata.business_name,
+        phone: currentSession.user.user_metadata.phone,
+        gstin: currentSession.user.user_metadata.gstin
+      } : null);
       
       setLoading(false);
     });
 
     return () => {
-      authListener.subscription.unsubscribe();
+      subscription.unsubscribe();
     };
   }, []);
 
@@ -94,8 +92,6 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       if (error) {
         throw error;
       }
-      
-      setUser(null);
     } catch (error) {
       console.error("Logout error:", error);
       toast({
@@ -109,6 +105,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   return (
     <AuthContext.Provider value={{ 
       user, 
+      session,
       login, 
       logout, 
       loading,

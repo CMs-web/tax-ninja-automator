@@ -5,8 +5,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
-import { useToast } from "@/components/ui/use-toast";
-import { signUp } from "@/integrations/supabase/client";
+import { useToast } from "@/hooks/use-toast";
+import { supabase } from "@/integrations/supabase/client";
 
 const RegisterForm = () => {
   const [businessName, setBusinessName] = useState("");
@@ -34,24 +34,37 @@ const RegisterForm = () => {
     setIsLoading(true);
 
     try {
-      const { data, error } = await signUp(email, password);
+      // Register user with Supabase Auth
+      const { data, error } = await supabase.auth.signUp({
+        email,
+        password,
+        options: {
+          data: {
+            business_name: businessName,
+            phone,
+            gstin
+          },
+          emailRedirectTo: window.location.origin + '/dashboard'
+        }
+      });
       
       if (error) {
         throw error;
       }
       
-      // If successful but needs email verification
+      // Successful registration
       toast({
         title: "Registration Successful",
-        description: "Your account has been created. Please verify your email before logging in.",
+        description: "Your account has been created. You can now log in.",
       });
       
+      // Redirect to login page
       navigate("/login");
-    } catch (error) {
+    } catch (error: any) {
       console.error("Registration error:", error);
       toast({
         title: "Registration Failed",
-        description: error instanceof Error ? error.message : "There was an error creating your account. Please try again.",
+        description: error?.message || "There was an error creating your account. Please try again.",
         variant: "destructive",
       });
     } finally {
