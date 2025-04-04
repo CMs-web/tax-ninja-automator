@@ -10,17 +10,7 @@ import { invoicesService } from "@/services/apiService";
 import { useAuth } from "@/hooks/useAuth";
 import { useToast } from "@/components/ui/use-toast";
 import { Eye, Trash2 } from "lucide-react";
-
-interface Invoice {
-  id: string;
-  invoice_number: string;
-  invoice_date: string;
-  amount: number;
-  gst_amount: number;
-  gst_rate: number;
-  type: "sales" | "purchase";
-  status?: string;
-}
+import { Invoice } from "@/types";
 
 const InvoiceList = () => {
   const [invoices, setInvoices] = useState<Invoice[]>([]);
@@ -31,8 +21,23 @@ const InvoiceList = () => {
   const { toast } = useToast();
 
   useEffect(() => {
-    fetchInvoices();
+    if (user) {
+      fetchInvoices();
+    }
   }, [user]);
+
+  // Listen for invoice-uploaded events
+  useEffect(() => {
+    const handleInvoiceUploaded = () => {
+      fetchInvoices();
+    };
+
+    window.addEventListener('invoice-uploaded', handleInvoiceUploaded);
+    
+    return () => {
+      window.removeEventListener('invoice-uploaded', handleInvoiceUploaded);
+    };
+  }, []);
 
   const fetchInvoices = async () => {
     if (!user) return;
@@ -136,6 +141,15 @@ const InvoiceList = () => {
               </SelectContent>
             </Select>
           </div>
+          <div>
+            <Button 
+              variant="outline" 
+              onClick={fetchInvoices} 
+              className="border-emerald-100 hover:border-emerald-300"
+            >
+              Refresh
+            </Button>
+          </div>
         </div>
         
         <div className="rounded-md border border-emerald-100">
@@ -174,7 +188,12 @@ const InvoiceList = () => {
                     <TableCell>{invoice.gst_amount.toLocaleString()} ({invoice.gst_rate}%)</TableCell>
                     <TableCell>{getStatusBadge(invoice.status)}</TableCell>
                     <TableCell className="text-right space-x-2">
-                      <Button variant="ghost" size="sm">
+                      <Button 
+                        variant="ghost" 
+                        size="sm" 
+                        onClick={() => window.open(invoice.file_url, '_blank')}
+                        disabled={!invoice.file_url}
+                      >
                         <Eye className="h-4 w-4" />
                       </Button>
                       <Button 

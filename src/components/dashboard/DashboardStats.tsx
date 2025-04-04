@@ -1,145 +1,168 @@
 
-import React, { useState, useEffect } from "react";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+import React from "react";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
-import { useAuth } from "@/hooks/useAuth";
-import { dashboardService } from "@/services/apiService";
+import { CalendarClock, CreditCard, FileText } from "lucide-react";
 
-const DashboardStats = () => {
-  const [stats, setStats] = useState({
-    gstPayable: 0,
-    salesGst: 0,
-    purchaseGst: 0,
-    filingDueDate: "",
-    lastFiled: "",
-    complianceScore: 0,
-  });
-  
-  const [isLoading, setIsLoading] = useState(true);
-  const { user } = useAuth();
-  
-  useEffect(() => {
-    const fetchDashboardStats = async () => {
-      if (!user) return;
-      
-      try {
-        setIsLoading(true);
-        const dashboardStats = await dashboardService.getStats(user.id);
-        
-        setStats({
-          gstPayable: dashboardStats.currentReturn?.gst_payable || 0,
-          salesGst: dashboardStats.currentReturn?.sales_gst || 0,
-          purchaseGst: dashboardStats.currentReturn?.purchase_gst || 0,
-          filingDueDate: dashboardStats.currentReturn?.due_date || formatNextDueDate(),
-          lastFiled: dashboardStats.lastFiled ? formatDate(dashboardStats.lastFiled) : "No previous filing",
-          complianceScore: dashboardStats.complianceScore || 100,
-        });
-      } catch (error) {
-        console.error("Error fetching dashboard stats:", error);
-      } finally {
-        setIsLoading(false);
-      }
-    };
+interface DashboardStatsProps {
+  stats: {
+    salesInvoicesCount: number;
+    purchaseInvoicesCount: number;
+    filingDueDate: string | null;
+    lastFiled: string | null;
+    complianceScore: number;
+  };
+}
+
+const DashboardStats = ({ stats }: DashboardStatsProps) => {
+  const formatDate = (dateString: string | null) => {
+    if (!dateString) return "Not available";
     
-    fetchDashboardStats();
-  }, [user]);
-  
-  // Format the next due date (20th of next month)
-  const formatNextDueDate = () => {
-    const now = new Date();
-    const nextMonth = new Date(now.getFullYear(), now.getMonth() + 1, 20);
-    return `${nextMonth.getDate()} ${nextMonth.toLocaleString('default', { month: 'short' })} ${nextMonth.getFullYear()}`;
+    try {
+      const date = new Date(dateString);
+      return date.toLocaleDateString(undefined, {
+        day: 'numeric',
+        month: 'short',
+        year: 'numeric',
+      });
+    } catch (error) {
+      return "Invalid date";
+    }
   };
   
-  // Format date from ISO string
-  const formatDate = (dateString: string) => {
-    const date = new Date(dateString);
-    return `${date.getDate()} ${date.toLocaleString('default', { month: 'short' })} ${date.getFullYear()}`;
+  // Calculate days remaining until the due date
+  const getDaysRemaining = () => {
+    if (!stats.filingDueDate) return "No due date";
+    
+    try {
+      const dueDate = new Date(stats.filingDueDate);
+      const today = new Date();
+      
+      // Reset hours to compare just the days
+      dueDate.setHours(0, 0, 0, 0);
+      today.setHours(0, 0, 0, 0);
+      
+      const diffTime = dueDate.getTime() - today.getTime();
+      const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+      
+      if (diffDays < 0) {
+        return "Overdue";
+      } else if (diffDays === 0) {
+        return "Due today";
+      } else if (diffDays === 1) {
+        return "1 day remaining";
+      } else {
+        return `${diffDays} days remaining`;
+      }
+    } catch (error) {
+      return "Unable to calculate";
+    }
+  };
+  
+  const getComplianceColor = () => {
+    const score = stats.complianceScore;
+    if (score >= 90) return "text-emerald-600";
+    if (score >= 75) return "text-amber-500";
+    return "text-red-500";
   };
 
   return (
-    <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-      <Card className="overflow-hidden border border-emerald-100">
-        <div className="absolute inset-x-0 h-1 bg-gradient-to-r from-emerald-400 to-emerald-600" />
-        <CardHeader className="pb-2 pt-6">
-          <CardTitle className="text-lg font-medium text-emerald-700">
-            GST Payable
+    <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+      <Card className="border border-emerald-100">
+        <CardHeader className="pb-2">
+          <CardTitle className="text-sm font-medium text-muted-foreground">
+            Invoice Summary
           </CardTitle>
-          <CardDescription>Current month</CardDescription>
         </CardHeader>
-        <CardContent className="pb-6">
-          {isLoading ? (
-            <div className="animate-pulse h-8 w-32 bg-gray-200 rounded"></div>
-          ) : (
-            <>
-              <div className="text-3xl font-bold">
-                ₹{stats.gstPayable.toLocaleString()}
+        <CardContent>
+          <div className="flex items-center justify-between">
+            <div>
+              <div className="text-2xl font-bold text-emerald-700">
+                {stats.salesInvoicesCount + stats.purchaseInvoicesCount}
               </div>
-              <div className="text-sm text-muted-foreground mt-1">
-                Sales GST: ₹{stats.salesGst.toLocaleString()} | Purchase GST: ₹
-                {stats.purchaseGst.toLocaleString()}
-              </div>
-            </>
-          )}
+              <p className="text-xs text-muted-foreground">
+                Total Invoices
+              </p>
+            </div>
+            <div>
+              <FileText className="h-8 w-8 text-emerald-500" />
+            </div>
+          </div>
+          
+          <div className="mt-4 space-y-2">
+            <div className="flex items-center justify-between text-sm">
+              <div>Sales Invoices</div>
+              <div className="font-medium">{stats.salesInvoicesCount}</div>
+            </div>
+            <div className="flex items-center justify-between text-sm">
+              <div>Purchase Invoices</div>
+              <div className="font-medium">{stats.purchaseInvoicesCount}</div>
+            </div>
+          </div>
         </CardContent>
       </Card>
-
-      <Card className="overflow-hidden border border-emerald-100">
-        <div className="absolute inset-x-0 h-1 bg-gradient-to-r from-emerald-400 to-emerald-600" />
-        <CardHeader className="pb-2 pt-6">
-          <CardTitle className="text-lg font-medium text-emerald-700">
-            Due Date
+      
+      <Card className="border border-emerald-100">
+        <CardHeader className="pb-2">
+          <CardTitle className="text-sm font-medium text-muted-foreground">
+            Next Filing Due
           </CardTitle>
-          <CardDescription>GSTR-3B filing</CardDescription>
         </CardHeader>
-        <CardContent className="pb-6">
-          {isLoading ? (
-            <div className="animate-pulse h-8 w-32 bg-gray-200 rounded"></div>
-          ) : (
-            <>
-              <div className="text-3xl font-bold">{stats.filingDueDate}</div>
-              <div className="text-sm text-muted-foreground mt-1">
-                Last filed: {stats.lastFiled}
+        <CardContent>
+          <div className="flex items-center justify-between">
+            <div>
+              <div className="text-2xl font-bold text-emerald-700">
+                {formatDate(stats.filingDueDate)}
               </div>
-            </>
-          )}
+              <p className="text-xs text-muted-foreground">
+                {getDaysRemaining()}
+              </p>
+            </div>
+            <div>
+              <CalendarClock className="h-8 w-8 text-emerald-500" />
+            </div>
+          </div>
+          
+          <div className="mt-4 space-y-2">
+            <div className="flex items-center justify-between text-sm">
+              <div>Last Filed</div>
+              <div className="font-medium">{formatDate(stats.lastFiled)}</div>
+            </div>
+          </div>
         </CardContent>
       </Card>
-
-      <Card className="overflow-hidden border border-emerald-100">
-        <div className="absolute inset-x-0 h-1 bg-gradient-to-r from-emerald-400 to-emerald-600" />
-        <CardHeader className="pb-2 pt-6">
-          <CardTitle className="text-lg font-medium text-emerald-700">
+      
+      <Card className="border border-emerald-100">
+        <CardHeader className="pb-2">
+          <CardTitle className="text-sm font-medium text-muted-foreground">
             Compliance Score
           </CardTitle>
-          <CardDescription>Based on filing history</CardDescription>
         </CardHeader>
-        <CardContent className="pb-6">
-          {isLoading ? (
-            <div className="animate-pulse h-8 w-32 bg-gray-200 rounded"></div>
-          ) : (
-            <>
-              <div className="text-3xl font-bold">{stats.complianceScore}%</div>
-              <Progress
-                value={stats.complianceScore}
-                className="h-2 mt-2 bg-emerald-100"
-                indicatorClassName="bg-emerald-500"
-              />
-              <div className="text-sm text-muted-foreground mt-2">
-                {stats.complianceScore > 90
-                  ? "Excellent compliance record"
-                  : stats.complianceScore > 70
-                  ? "Good compliance record"
-                  : "Needs improvement"}
+        <CardContent>
+          <div className="flex items-center justify-between">
+            <div>
+              <div className={`text-2xl font-bold ${getComplianceColor()}`}>
+                {stats.complianceScore}%
               </div>
-            </>
-          )}
+              <p className="text-xs text-muted-foreground">
+                On-time Filing Rate
+              </p>
+            </div>
+            <div>
+              <CreditCard className="h-8 w-8 text-emerald-500" />
+            </div>
+          </div>
+          
+          <div className="mt-4 space-y-2">
+            <Progress 
+              value={stats.complianceScore} 
+              className="h-2 bg-emerald-100"
+            />
+            <p className="text-xs text-muted-foreground text-right">
+              {stats.complianceScore >= 90 ? "Excellent" : 
+               stats.complianceScore >= 75 ? "Good" : "Needs Improvement"}
+            </p>
+          </div>
         </CardContent>
       </Card>
     </div>

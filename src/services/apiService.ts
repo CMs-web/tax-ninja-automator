@@ -1,5 +1,6 @@
 
 import { supabase } from "@/integrations/supabase/client";
+import { Profile, Invoice, GstReturn, Payment } from "@/types";
 
 // Profiles Service
 export const profilesService = {
@@ -69,7 +70,7 @@ export const invoicesService = {
   },
   
   async uploadInvoiceFile(file: File, userId: string) {
-    const filePath = `invoices/${userId}/${Date.now()}-${file.name}`;
+    const filePath = `${userId}/${Date.now()}-${file.name}`;
     
     const { data, error } = await supabase
       .storage
@@ -133,7 +134,7 @@ export const gstReturnsService = {
     }
   },
   
-  async updateStatus(returnId: string, status: string) {
+  async updateStatus(returnId: string, status: "pending" | "submitted" | "paid") {
     return supabase
       .from('gst_returns')
       .update({
@@ -181,34 +182,47 @@ export const paymentsService = {
 // Dashboard Stats Service
 export const dashboardService = {
   async getStats(userId: string) {
-    // Get current month GST returns
-    const currentMonth = new Date().toLocaleString('default', { month: 'short' });
-    const currentYear = new Date().getFullYear();
-    const currentPeriod = `${currentMonth} ${currentYear}`;
-    
-    const { data: currentReturn } = await gstReturnsService.getByPeriod(userId, currentPeriod);
-    
-    // Get recent returns
-    const { data: recentReturns } = await gstReturnsService.getAll(userId);
-    
-    // Get invoice counts
-    const { data: salesInvoices } = await invoicesService.getInvoicesByType(userId, 'sales');
-    const { data: purchaseInvoices } = await invoicesService.getInvoicesByType(userId, 'purchase');
-    
-    return {
-      currentReturn: currentReturn || null,
-      recentReturns: recentReturns || [],
-      salesInvoicesCount: salesInvoices?.length || 0,
-      purchaseInvoicesCount: purchaseInvoices?.length || 0,
-      filingDueDate: currentReturn?.due_date || null,
-      lastFiled: (recentReturns && recentReturns.length > 0) ? recentReturns[0].filed_date : null,
-      complianceScore: calculateComplianceScore(recentReturns || [])
-    };
+    try {
+      // Get current month GST returns
+      const currentMonth = new Date().toLocaleString('default', { month: 'short' });
+      const currentYear = new Date().getFullYear();
+      const currentPeriod = `${currentMonth} ${currentYear}`;
+      
+      const { data: currentReturn } = await gstReturnsService.getByPeriod(userId, currentPeriod);
+      
+      // Get recent returns
+      const { data: recentReturns } = await gstReturnsService.getAll(userId);
+      
+      // Get invoice counts
+      const { data: salesInvoices } = await invoicesService.getInvoicesByType(userId, 'sales');
+      const { data: purchaseInvoices } = await invoicesService.getInvoicesByType(userId, 'purchase');
+      
+      return {
+        currentReturn: currentReturn || null,
+        recentReturns: recentReturns || [],
+        salesInvoicesCount: salesInvoices?.length || 0,
+        purchaseInvoicesCount: purchaseInvoices?.length || 0,
+        filingDueDate: currentReturn?.due_date || null,
+        lastFiled: (recentReturns && recentReturns.length > 0) ? recentReturns[0].filed_date : null,
+        complianceScore: calculateComplianceScore(recentReturns || [])
+      };
+    } catch (error) {
+      console.error("Error getting dashboard stats:", error);
+      return {
+        currentReturn: null,
+        recentReturns: [],
+        salesInvoicesCount: 0,
+        purchaseInvoicesCount: 0,
+        filingDueDate: null,
+        lastFiled: null,
+        complianceScore: 100
+      };
+    }
   }
 };
 
 // Helper function to calculate compliance score
-function calculateComplianceScore(returns: any[]) {
+function calculateComplianceScore(returns: GstReturn[]) {
   if (returns.length === 0) return 100;
   
   const totalReturns = returns.length;

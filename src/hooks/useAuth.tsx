@@ -1,109 +1,126 @@
 
-import {
-  useEffect,
-  useState,
-  createContext,
-  useContext,
-  ReactNode,
-} from "react";
-import { User, Session } from "@supabase/supabase-js";
-import { supabase, getCurrentSession } from "@/integrations/supabase/client";
+import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import { supabase } from "@/integrations/supabase/client";
+import { useNavigate } from 'react-router-dom';
+import { useToast } from './use-toast';
 
-type AuthContextType = {
+interface User {
+  id: string;
+  email: string;
+}
+
+interface AuthContextType {
   user: User | null;
-  session: Session | null;
-  isLoading: boolean;
-  setUser: (user: User | null) => void;
-  setSession: (session: Session | null) => void;
-  signOut: () => Promise<void>;
-  isAdmin: boolean;
-};
+  login: (email: string, password: string) => Promise<{ error: Error | null }>;
+  logout: () => Promise<void>;
+  loading: boolean;
+}
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [user, setUser] = useState<User | null>(null);
-  const [session, setSession] = useState<Session | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
-  const [isAdmin, setIsAdmin] = useState(false);
+  const [loading, setLoading] = useState<boolean>(true);
+  const { toast } = useToast();
+  const navigate = useNavigate();
 
   useEffect(() => {
-    // Set up auth state listener first
-    const {
-      data: { subscription },
-    } = supabase.auth.onAuthStateChange((event, session) => {
-      setSession(session);
-      setUser(session?.user ?? null);
+    const getCurrentSession = async () => {
+      setLoading(true);
       
-      // Check if user is admin when session changes
-      if (session?.user) {
-        checkAdminStatus(session.user.id);
+      try {
+        // Get current session
+        const { data, error } = await supabase.auth.getSession();
+        
+        if (error) {
+          throw error;
+        }
+        
+        if (data && data.session) {
+          setUser({
+            id: data.session.user.id,
+            email: data.session.user.email || '',
+          });
+        }
+      } catch (error) {
+        console.error("Session error:", error);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    getCurrentSession();
+
+    // Listen for auth changes
+    const { data: authListener } = supabase.auth.onAuthStateChange(async (event, session) => {
+      if (session) {
+        setUser({
+          id: session.user.id,
+          email: session.user.email || '',
+        });
       } else {
-        setIsAdmin(false);
+        setUser(null);
       }
       
-      setIsLoading(false);
+      setLoading(false);
     });
 
-    // Then check for existing session
-    const initSession = async () => {
-      const { data } = await getCurrentSession();
-      setSession(data.session);
-      setUser(data.session?.user ?? null);
-      
-      // Check admin status
-      if (data.session?.user) {
-        checkAdminStatus(data.session.user.id);
-      }
-      
-      setIsLoading(false);
-    };
-    
-    initSession();
-
     return () => {
-      subscription.unsubscribe();
+      authListener.subscription.unsubscribe();
     };
   }, []);
-  
-  // Function to check if the user is an admin
-  const checkAdminStatus = async (userId: string) => {
+
+  const login = async (email: string, password: string) => {
     try {
-      const { data, error } = await supabase
-        .rpc('is_admin', { uid: userId });
-        
-      if (error) throw error;
-      setIsAdmin(data || false);
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email,
+        password,
+      });
+      
+      if (error) {
+        throw error;
+      }
+
+      return { error: null };
     } catch (error) {
-      console.error("Error checking admin status:", error);
-      setIsAdmin(false);
+      console.error("Login error:", error);
+      return { error: error as Error };
     }
   };
 
-  const signOut = async () => {
-    await supabase.auth.signOut();
-    setUser(null);
-    setSession(null);
-    setIsAdmin(false);
+  const logout = async () => {
+    try {
+      const { error } = await supabase.auth.signOut();
+      
+      if (error) {
+        throw error;
+      }
+      
+      setUser(null);
+      navigate('/login');
+    } catch (error) {
+      console.error("Logout error:", error);
+      toast({
+        title: "Logout failed",
+        description: "There was a problem signing out",
+        variant: "destructive",
+      });
+    }
   };
 
-  const value = {
-    user,
-    session,
-    isLoading,
-    setUser,
-    setSession,
-    signOut,
-    isAdmin,
-  };
-
-  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
+  return (
+    <AuthContext.Provider value={{ user, login, logout, loading }}>
+      {children}
+    </AuthContext.Provider>
+  );
 };
 
 export const useAuth = () => {
   const context = useContext(AuthContext);
+  
   if (context === undefined) {
-    throw new Error("useAuth must be used within an AuthProvider");
+    throw new Error('useAuth must be used within an AuthProvider');
   }
+  
   return context;
 };

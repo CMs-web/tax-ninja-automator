@@ -1,1 +1,30 @@
+
 project_id = "sjqezbfqmwfwbutgzwqd"
+[api]
+enabled = true
+[api.cors]
+allowed_origins = ["*"]
+
+[db]
+enabled = true
+
+[storage]
+enabled = true
+
+[auth]
+enabled = true
+
+[auth.email]
+enabled = true
+# Uncomment below to enable email confirmations
+# double_confirm_changes = true
+# enable_confirmations = true
+
+[auth.external.github]
+enabled = false
+
+[auth.external.google]
+enabled = false
+
+[functions.create_test_user]
+verify_jwt = false

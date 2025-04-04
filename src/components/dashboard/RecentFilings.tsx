@@ -5,14 +5,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Badge } from "@/components/ui/badge";
 import { useAuth } from "@/hooks/useAuth";
 import { gstReturnsService } from "@/services/apiService";
-
-interface GstReturn {
-  id: string;
-  filing_period: string;
-  due_date: string;
-  gst_payable: number;
-  status: "pending" | "submitted" | "paid";
-}
+import { GstReturn } from "@/types";
 
 const RecentFilings = () => {
   const [filings, setFilings] = useState<GstReturn[]>([]);

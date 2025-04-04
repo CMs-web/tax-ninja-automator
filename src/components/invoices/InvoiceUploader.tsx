@@ -61,17 +61,24 @@ const InvoiceUploader = () => {
         // Upload to Supabase Storage
         const fileUrl = await invoicesService.uploadInvoiceFile(file, user.id);
         
+        // Generate a random invoice number for demo purposes
+        const invoiceNo = `INV-${Math.floor(Math.random() * 10000).toString().padStart(4, '0')}`;
+        
         // Add invoice record to database
         const newInvoice = {
           user_id: user.id,
           type: invoiceType as "sales" | "purchase",
-          invoice_number: `INV-${Date.now().toString().substring(7)}`,
+          invoice_number: invoiceNo,
           invoice_date: new Date().toISOString().split('T')[0],
-          amount: 0, // To be updated after OCR processing
-          gst_rate: 0, // To be updated after OCR processing
-          gst_amount: 0, // To be updated after OCR processing
+          customer_vendor_name: "Sample Customer",
+          amount: Math.floor(Math.random() * 10000), // Random amount for demo
+          gst_rate: 18, // Standard GST rate
+          gst_amount: 0, // Will be calculated below
           file_url: fileUrl
         };
+        
+        // Calculate GST amount
+        newInvoice.gst_amount = (newInvoice.amount * newInvoice.gst_rate) / 100;
         
         const { error } = await invoicesService.addInvoice(newInvoice);
         
@@ -96,6 +103,10 @@ const InvoiceUploader = () => {
       });
     } finally {
       setIsProcessing(false);
+      
+      // Tell parent component to refresh the invoice list
+      // You could emit an event or use a callback prop here
+      window.dispatchEvent(new CustomEvent('invoice-uploaded'));
     }
   };
 

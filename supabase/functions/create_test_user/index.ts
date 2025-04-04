@@ -1,66 +1,82 @@
 
-import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.8.0";
 
-const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
-const SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
+const corsHeaders = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+};
 
 serve(async (req) => {
+  // Handle CORS preflight requests
+  if (req.method === "OPTIONS") {
+    return new Response(null, { headers: corsHeaders, status: 204 });
+  }
+
   try {
-    // Initialize Supabase client with service role key (admin access)
-    const supabase = createClient(SUPABASE_URL, SERVICE_ROLE_KEY);
-
-    // Create test admin user
-    const email = "admin@taxninja.com";
-    const password = "admintest123"; // this is hardcoded for demonstration purposes only
-
-    // Check if user exists
-    const { data: existingUsers } = await supabase.auth.admin.listUsers();
-    
-    const existingAdmin = existingUsers?.users?.find(user => user.email === email);
-    
-    if (existingAdmin) {
-      return new Response(JSON.stringify({ 
-        message: "Test admin user already exists",
-        userId: existingAdmin.id 
-      }), {
-        headers: { "Content-Type": "application/json" },
-        status: 200
-      });
-    }
+    // Create a Supabase client with the Admin key
+    const supabaseAdmin = createClient(
+      Deno.env.get("SUPABASE_URL") ?? "",
+      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "",
+      {
+        auth: {
+          autoRefreshToken: false,
+          persistSession: false,
+        },
+      }
+    );
 
     // Create the admin user
-    const { data: userData, error: userError } = await supabase.auth.admin.createUser({
-      email,
-      password,
-      email_confirm: true, // Auto-confirm the email
+    const { data: userData, error: userError } = await supabaseAdmin.auth.admin.createUser({
+      email: "admin@taxninja.com",
+      password: "admintest123",
+      email_confirm: true,
+      user_metadata: {
+        business_name: "Tax Ninja Admin",
+      },
     });
 
-    if (userError) throw userError;
-
-    // Add user to admin_users table
-    if (userData?.user) {
-      const { error: adminError } = await supabase
-        .from("admin_users")
-        .insert([{ id: userData.user.id, is_super_admin: true }]);
-
-      if (adminError) throw adminError;
+    if (userError) {
+      throw userError;
     }
 
-    return new Response(JSON.stringify({ 
-      message: "Test admin user created successfully",
-      userId: userData?.user?.id,
-      email
-    }), {
-      headers: { "Content-Type": "application/json" },
-      status: 200
-    });
+    // Add the user to admin_users table
+    if (userData.user) {
+      const { error: adminError } = await supabaseAdmin
+        .from("admin_users")
+        .insert({ 
+          id: userData.user.id,
+          is_super_admin: true
+        })
+        .select()
+        .single();
+
+      if (adminError && adminError.code !== "23505") { // Ignore duplicate key errors
+        throw adminError;
+      }
+
+      console.log("Admin user created:", userData.user.email);
+    }
+
+    return new Response(
+      JSON.stringify({
+        message: "Admin user created successfully",
+        email: "admin@taxninja.com",
+        password: "admintest123",
+      }),
+      {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+        status: 200,
+      }
+    );
   } catch (error) {
-    console.error("Error creating test user:", error);
-    
-    return new Response(JSON.stringify({ error: error.message }), {
-      headers: { "Content-Type": "application/json" },
-      status: 500
-    });
+    console.error("Error creating admin user:", error);
+    return new Response(
+      JSON.stringify({ error: error.message }),
+      {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+        status: 400,
+      }
+    );
   }
 });

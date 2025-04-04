@@ -1,6 +1,6 @@
 
 import React from "react";
-import LoginForm from "@/components/auth/LoginForm";
+import AdminLogin from "@/components/auth/AdminLogin";
 
 const Login = () => {
   return (
@@ -17,7 +17,7 @@ const Login = () => {
           <p className="text-gray-500">Login to access your GST filing dashboard</p>
         </div>
         
-        <LoginForm />
+        <AdminLogin />
         
         <p className="text-center mt-8 text-sm text-gray-500">
           New to Tax Ninja? <a href="/" className="text-emerald-600 hover:underline">Learn more</a>
