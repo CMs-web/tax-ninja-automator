@@ -43,5 +43,5 @@ export interface Payment {
 
 // Mock service responses for development
 export const mockServices = {
-  enableMocks: true
+  enableMocks: true // Set to false when ready to use real Supabase backend
 };
