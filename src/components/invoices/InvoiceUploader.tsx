@@ -52,7 +52,7 @@ const InvoiceUploader = () => {
       
       if (uploadError) throw uploadError;
       
-      // Create the invoice record
+      // Create the invoice record with properly typed status
       const invoiceData = {
         user_id: user.id,
         invoice_number: `INV-${Date.now().toString().slice(-6)}`, // Dummy invoice number
@@ -61,7 +61,7 @@ const InvoiceUploader = () => {
         amount: Math.floor(Math.random() * 10000) + 1000, // Random amount
         gst_amount: Math.floor(Math.random() * 1000) + 100, // Random GST amount
         type: invoiceType,
-        status: 'pending',
+        status: 'pending' as const,
         file_url: fileUrl
       };
       

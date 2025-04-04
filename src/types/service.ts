@@ -40,3 +40,8 @@ export interface Payment {
   created_at: string;
   updated_at: string;
 }
+
+// Mock service responses for development
+export const mockServices = {
+  enableMocks: true
+};
