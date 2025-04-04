@@ -1,7 +1,6 @@
 
 import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { supabase } from "@/integrations/supabase/client";
-import { useNavigate } from 'react-router-dom';
 import { useToast } from '@/hooks/use-toast';
 
 interface User {
@@ -14,7 +13,7 @@ interface AuthContextType {
   login: (email: string, password: string) => Promise<{ error: Error | null }>;
   logout: () => Promise<void>;
   loading: boolean;
-  isLoading: boolean; // Adding missing property
+  isLoading: boolean;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -23,7 +22,6 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
   const { toast } = useToast();
-  const navigate = useNavigate();
 
   useEffect(() => {
     const getCurrentSession = async () => {
@@ -98,7 +96,6 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       }
       
       setUser(null);
-      navigate('/login');
     } catch (error) {
       console.error("Logout error:", error);
       toast({
@@ -115,7 +112,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       login, 
       logout, 
       loading,
-      isLoading: loading // Add the isLoading property
+      isLoading: loading
     }}>
       {children}
     </AuthContext.Provider>

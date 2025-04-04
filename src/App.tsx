@@ -1,3 +1,4 @@
+
 import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -23,7 +24,7 @@ const queryClient = new QueryClient({
   },
 });
 
-// Protected route component
+// Protected route component that requires authentication
 const ProtectedRoute = ({ children }: { children: JSX.Element }) => {
   const { user, isLoading } = useAuth();
   const location = useLocation();
@@ -83,17 +84,18 @@ const AppRoutes = () => {
   );
 };
 
+// Structure the app to properly provide the Router context before AuthProvider
 const App = () => (
   <QueryClientProvider client={queryClient}>
-    <AuthProvider>
-      <TooltipProvider>
-        <Toaster />
-        <Sonner />
-        <BrowserRouter>
+    <BrowserRouter>
+      <AuthProvider>
+        <TooltipProvider>
+          <Toaster />
+          <Sonner />
           <AppRoutes />
-        </BrowserRouter>
-      </TooltipProvider>
-    </AuthProvider>
+        </TooltipProvider>
+      </AuthProvider>
+    </BrowserRouter>
   </QueryClientProvider>
 );
 

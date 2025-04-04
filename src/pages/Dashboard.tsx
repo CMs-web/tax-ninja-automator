@@ -54,7 +54,7 @@ const Dashboard = () => {
           </p>
         </div>
         
-        <DashboardStats stats={stats} isLoading={isLoading} />
+        <DashboardStats stats={stats} />
         
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           <InvoiceSummary />

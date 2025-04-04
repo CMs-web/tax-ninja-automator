@@ -1,215 +1,161 @@
 
 import React, { useState, useEffect } from "react";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { invoicesService } from "@/services/apiService";
-import { useAuth } from "@/hooks/useAuth";
 import { useToast } from "@/components/ui/use-toast";
-import { Eye, Trash2 } from "lucide-react";
-import { Invoice } from "@/types";
+import { useAuth } from "@/hooks/useAuth";
+import { format } from "date-fns";
+import { Edit, Trash2, Eye } from "lucide-react";
+import { invoiceService } from "@/services/invoiceService";
 
 const InvoiceList = () => {
-  const [invoices, setInvoices] = useState<Invoice[]>([]);
-  const [filter, setFilter] = useState<"sales" | "purchase" | "all">("all");
-  const [searchQuery, setSearchQuery] = useState("");
+  const [invoices, setInvoices] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const { user } = useAuth();
   const { toast } = useToast();
 
   useEffect(() => {
-    if (user) {
-      fetchInvoices();
-    }
-  }, [user]);
-
-  // Listen for invoice-uploaded events
-  useEffect(() => {
-    const handleInvoiceUploaded = () => {
-      fetchInvoices();
-    };
-
-    window.addEventListener('invoice-uploaded', handleInvoiceUploaded);
-    
-    return () => {
-      window.removeEventListener('invoice-uploaded', handleInvoiceUploaded);
-    };
-  }, []);
-
-  const fetchInvoices = async () => {
     if (!user) return;
-    
-    setIsLoading(true);
-    try {
-      const { data, error } = await invoicesService.getAllInvoices(user.id);
-      
-      if (error) throw error;
-      
-      setInvoices(data || []);
-    } catch (error) {
-      console.error("Error fetching invoices:", error);
-      toast({
-        title: "Failed to load invoices",
-        description: "There was a problem fetching your invoices",
-        variant: "destructive",
-      });
-    } finally {
-      setIsLoading(false);
-    }
-  };
 
-  const handleDeleteInvoice = async (invoiceId: string) => {
+    const loadInvoices = async () => {
+      setIsLoading(true);
+      try {
+        const { data } = await invoiceService.getAll(user.id);
+        setInvoices(data);
+      } catch (error) {
+        console.error("Error loading invoices:", error);
+        toast({
+          title: "Error",
+          description: "Failed to load invoices. Please try again later.",
+          variant: "destructive",
+        });
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    loadInvoices();
+  }, [user, toast]);
+
+  const handleDeleteInvoice = async (id: string) => {
+    if (!window.confirm("Are you sure you want to delete this invoice?")) return;
+
     try {
-      const { error } = await invoicesService.deleteInvoice(invoiceId);
+      const { error } = await invoiceService.delete(id);
       
       if (error) throw error;
       
       // Remove from local state
-      setInvoices(invoices.filter(invoice => invoice.id !== invoiceId));
+      setInvoices(invoices.filter((invoice: any) => invoice.id !== id));
       
       toast({
-        title: "Invoice deleted",
-        description: "The invoice has been deleted successfully",
+        title: "Invoice Deleted",
+        description: "Invoice has been successfully deleted.",
       });
     } catch (error) {
       console.error("Error deleting invoice:", error);
       toast({
-        title: "Failed to delete invoice",
-        description: "There was a problem deleting this invoice",
+        title: "Error",
+        description: "Failed to delete invoice. Please try again.",
         variant: "destructive",
       });
     }
   };
 
-  const filteredInvoices = invoices.filter((invoice) => {
-    // Filter by type
-    if (filter !== "all" && invoice.type !== filter) {
-      return false;
-    }
-    
-    // Filter by search query
-    if (searchQuery && !invoice.invoice_number.toLowerCase().includes(searchQuery.toLowerCase())) {
-      return false;
-    }
-    
-    return true;
-  });
-
-  const getStatusBadge = (status?: string) => {
-    switch (status) {
-      case "processed":
-        return <Badge className="bg-emerald-100 text-emerald-800 hover:bg-emerald-200">Processed</Badge>;
-      case "pending":
-        return <Badge className="bg-yellow-100 text-yellow-800 hover:bg-yellow-200">Pending</Badge>;
-      case "error":
-        return <Badge className="bg-red-100 text-red-800 hover:bg-red-200">Error</Badge>;
-      default:
-        return <Badge className="bg-blue-100 text-blue-800 hover:bg-blue-200">New</Badge>;
-    }
+  const formatCurrency = (amount: number) => {
+    return new Intl.NumberFormat("en-IN", {
+      style: "currency",
+      currency: "INR",
+    }).format(amount);
   };
 
   return (
-    <Card className="border border-emerald-100">
-      <CardHeader className="pb-2">
-        <CardTitle className="text-xl font-semibold text-emerald-700">Invoice History</CardTitle>
-        <CardDescription>
-          View and manage all your uploaded invoices
-        </CardDescription>
+    <Card>
+      <CardHeader>
+        <CardTitle>All Invoices</CardTitle>
       </CardHeader>
       <CardContent>
-        <div className="flex flex-col md:flex-row gap-4 mb-6">
-          <div className="flex-1">
-            <Input
-              placeholder="Search by invoice number..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="border-emerald-100 focus:border-emerald-300"
-            />
+        {isLoading ? (
+          <div className="space-y-3">
+            <div className="h-8 bg-gray-100 animate-pulse w-full rounded-md"></div>
+            <div className="h-8 bg-gray-100 animate-pulse w-full rounded-md"></div>
+            <div className="h-8 bg-gray-100 animate-pulse w-full rounded-md"></div>
           </div>
-          <div className="w-full md:w-36">
-            <Select value={filter} onValueChange={(value: "all" | "sales" | "purchase") => setFilter(value)}>
-              <SelectTrigger className="border-emerald-100 focus:border-emerald-300">
-                <SelectValue placeholder="All Types" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Types</SelectItem>
-                <SelectItem value="sales">Sales</SelectItem>
-                <SelectItem value="purchase">Purchase</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-          <div>
-            <Button 
-              variant="outline" 
-              onClick={fetchInvoices} 
-              className="border-emerald-100 hover:border-emerald-300"
-            >
-              Refresh
-            </Button>
-          </div>
-        </div>
-        
-        <div className="rounded-md border border-emerald-100">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Number</TableHead>
-                <TableHead>Date</TableHead>
-                <TableHead>Type</TableHead>
-                <TableHead>Amount (₹)</TableHead>
-                <TableHead>GST (₹)</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead className="text-right">Actions</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {isLoading ? (
+        ) : invoices.length > 0 ? (
+          <div className="overflow-x-auto">
+            <Table>
+              <TableHeader>
                 <TableRow>
-                  <TableCell colSpan={7} className="text-center py-6">
-                    Loading invoices...
-                  </TableCell>
+                  <TableHead>Invoice #</TableHead>
+                  <TableHead>Date</TableHead>
+                  <TableHead>Vendor</TableHead>
+                  <TableHead>Amount</TableHead>
+                  <TableHead>GST</TableHead>
+                  <TableHead>Type</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead>Actions</TableHead>
                 </TableRow>
-              ) : filteredInvoices.length === 0 ? (
-                <TableRow>
-                  <TableCell colSpan={7} className="text-center py-6">
-                    No invoices found. Try a different filter or upload some invoices.
-                  </TableCell>
-                </TableRow>
-              ) : (
-                filteredInvoices.map((invoice) => (
+              </TableHeader>
+              <TableBody>
+                {invoices.map((invoice: any) => (
                   <TableRow key={invoice.id}>
                     <TableCell className="font-medium">{invoice.invoice_number}</TableCell>
-                    <TableCell>{new Date(invoice.invoice_date).toLocaleDateString()}</TableCell>
-                    <TableCell className="capitalize">{invoice.type}</TableCell>
-                    <TableCell>{invoice.amount.toLocaleString()}</TableCell>
-                    <TableCell>{invoice.gst_amount.toLocaleString()} ({invoice.gst_rate}%)</TableCell>
-                    <TableCell>{getStatusBadge(invoice.status)}</TableCell>
-                    <TableCell className="text-right space-x-2">
-                      <Button 
-                        variant="ghost" 
-                        size="sm" 
-                        onClick={() => window.open(invoice.file_url, '_blank')}
-                        disabled={!invoice.file_url}
+                    <TableCell>{format(new Date(invoice.invoice_date), "dd MMM yyyy")}</TableCell>
+                    <TableCell>{invoice.vendor}</TableCell>
+                    <TableCell>{formatCurrency(invoice.amount)}</TableCell>
+                    <TableCell>{formatCurrency(invoice.gst_amount)}</TableCell>
+                    <TableCell>
+                      <Badge variant={invoice.type === "sales" ? "default" : "outline"}>
+                        {invoice.type}
+                      </Badge>
+                    </TableCell>
+                    <TableCell>
+                      <Badge 
+                        variant={
+                          invoice.status === "processed" 
+                            ? "success"
+                            : invoice.status === "error" 
+                              ? "destructive" 
+                              : "secondary"
+                        }
                       >
-                        <Eye className="h-4 w-4" />
-                      </Button>
-                      <Button 
-                        variant="ghost" 
-                        size="sm" 
-                        onClick={() => handleDeleteInvoice(invoice.id)}
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
+                        {invoice.status}
+                      </Badge>
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex space-x-1">
+                        {invoice.file_url && (
+                          <Button size="sm" variant="outline" asChild>
+                            <a href={invoice.file_url} target="_blank" rel="noreferrer">
+                              <Eye className="h-3.5 w-3.5" />
+                            </a>
+                          </Button>
+                        )}
+                        <Button size="sm" variant="outline">
+                          <Edit className="h-3.5 w-3.5" />
+                        </Button>
+                        <Button 
+                          size="sm" 
+                          variant="outline" 
+                          className="text-red-500 hover:text-red-700"
+                          onClick={() => handleDeleteInvoice(invoice.id)}
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </Button>
+                      </div>
                     </TableCell>
                   </TableRow>
-                ))
-              )}
-            </TableBody>
-          </Table>
-        </div>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+        ) : (
+          <div className="text-center py-12">
+            <p className="text-muted-foreground">No invoices found. Upload an invoice to get started.</p>
+          </div>
+        )}
       </CardContent>
     </Card>
   );

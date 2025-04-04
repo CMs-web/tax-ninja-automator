@@ -1,3 +1,4 @@
+
 import React from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import {
@@ -41,6 +42,7 @@ const AppSidebar = () => {
         title: "Logged Out",
         description: "You have been successfully logged out.",
       });
+      navigate("/login");
     } catch (error) {
       console.error("Logout error:", error);
       toast({
