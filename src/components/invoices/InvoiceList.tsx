@@ -1,37 +1,83 @@
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
-
-type InvoiceType = "sales" | "purchase";
+import { invoicesService } from "@/services/apiService";
+import { useAuth } from "@/hooks/useAuth";
+import { useToast } from "@/components/ui/use-toast";
+import { Eye, Trash2 } from "lucide-react";
 
 interface Invoice {
   id: string;
-  number: string;
-  date: string;
+  invoice_number: string;
+  invoice_date: string;
   amount: number;
-  gstAmount: number;
-  gstRate: number;
-  type: InvoiceType;
-  status: "processed" | "pending" | "error";
+  gst_amount: number;
+  gst_rate: number;
+  type: "sales" | "purchase";
+  status?: string;
 }
 
 const InvoiceList = () => {
-  // Mock data - in a real app, this would come from your API/backend
-  const invoices: Invoice[] = [
-    { id: "1", number: "INV-001", date: "2025-03-15", amount: 11800, gstAmount: 1800, gstRate: 18, type: "sales", status: "processed" },
-    { id: "2", number: "INV-002", date: "2025-03-20", amount: 5900, gstAmount: 900, gstRate: 18, type: "sales", status: "processed" },
-    { id: "3", number: "INV-003", date: "2025-03-22", amount: 3540, gstAmount: 540, gstRate: 18, type: "sales", status: "pending" },
-    { id: "4", number: "PUR-001", date: "2025-03-10", amount: 7080, gstAmount: 1080, gstRate: 18, type: "purchase", status: "processed" },
-    { id: "5", number: "PUR-002", date: "2025-03-18", amount: 4720, gstAmount: 720, gstRate: 18, type: "purchase", status: "error" }
-  ];
-
-  const [filter, setFilter] = useState<InvoiceType | "all">("all");
+  const [invoices, setInvoices] = useState<Invoice[]>([]);
+  const [filter, setFilter] = useState<"sales" | "purchase" | "all">("all");
   const [searchQuery, setSearchQuery] = useState("");
+  const [isLoading, setIsLoading] = useState(true);
+  const { user } = useAuth();
+  const { toast } = useToast();
+
+  useEffect(() => {
+    fetchInvoices();
+  }, [user]);
+
+  const fetchInvoices = async () => {
+    if (!user) return;
+    
+    setIsLoading(true);
+    try {
+      const { data, error } = await invoicesService.getAllInvoices(user.id);
+      
+      if (error) throw error;
+      
+      setInvoices(data || []);
+    } catch (error) {
+      console.error("Error fetching invoices:", error);
+      toast({
+        title: "Failed to load invoices",
+        description: "There was a problem fetching your invoices",
+        variant: "destructive",
+      });
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleDeleteInvoice = async (invoiceId: string) => {
+    try {
+      const { error } = await invoicesService.deleteInvoice(invoiceId);
+      
+      if (error) throw error;
+      
+      // Remove from local state
+      setInvoices(invoices.filter(invoice => invoice.id !== invoiceId));
+      
+      toast({
+        title: "Invoice deleted",
+        description: "The invoice has been deleted successfully",
+      });
+    } catch (error) {
+      console.error("Error deleting invoice:", error);
+      toast({
+        title: "Failed to delete invoice",
+        description: "There was a problem deleting this invoice",
+        variant: "destructive",
+      });
+    }
+  };
 
   const filteredInvoices = invoices.filter((invoice) => {
     // Filter by type
@@ -40,30 +86,30 @@ const InvoiceList = () => {
     }
     
     // Filter by search query
-    if (searchQuery && !invoice.number.toLowerCase().includes(searchQuery.toLowerCase())) {
+    if (searchQuery && !invoice.invoice_number.toLowerCase().includes(searchQuery.toLowerCase())) {
       return false;
     }
     
     return true;
   });
 
-  const getStatusBadge = (status: string) => {
+  const getStatusBadge = (status?: string) => {
     switch (status) {
       case "processed":
-        return <Badge className="gst-badge gst-badge-green">Processed</Badge>;
+        return <Badge className="bg-emerald-100 text-emerald-800 hover:bg-emerald-200">Processed</Badge>;
       case "pending":
-        return <Badge className="gst-badge gst-badge-yellow">Pending</Badge>;
+        return <Badge className="bg-yellow-100 text-yellow-800 hover:bg-yellow-200">Pending</Badge>;
       case "error":
-        return <Badge className="gst-badge gst-badge-red">Error</Badge>;
+        return <Badge className="bg-red-100 text-red-800 hover:bg-red-200">Error</Badge>;
       default:
-        return null;
+        return <Badge className="bg-blue-100 text-blue-800 hover:bg-blue-200">New</Badge>;
     }
   };
 
   return (
-    <Card className="gst-dashboard-card">
+    <Card className="border border-emerald-100">
       <CardHeader className="pb-2">
-        <CardTitle className="text-xl font-semibold text-gst-primary">Invoice History</CardTitle>
+        <CardTitle className="text-xl font-semibold text-emerald-700">Invoice History</CardTitle>
         <CardDescription>
           View and manage all your uploaded invoices
         </CardDescription>
@@ -75,12 +121,12 @@ const InvoiceList = () => {
               placeholder="Search by invoice number..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="gst-input-field"
+              className="border-emerald-100 focus:border-emerald-300"
             />
           </div>
           <div className="w-full md:w-36">
             <Select value={filter} onValueChange={(value: "all" | "sales" | "purchase") => setFilter(value)}>
-              <SelectTrigger>
+              <SelectTrigger className="border-emerald-100 focus:border-emerald-300">
                 <SelectValue placeholder="All Types" />
               </SelectTrigger>
               <SelectContent>
@@ -92,7 +138,7 @@ const InvoiceList = () => {
           </div>
         </div>
         
-        <div className="rounded-md border">
+        <div className="rounded-md border border-emerald-100">
           <Table>
             <TableHeader>
               <TableRow>
@@ -106,7 +152,13 @@ const InvoiceList = () => {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {filteredInvoices.length === 0 ? (
+              {isLoading ? (
+                <TableRow>
+                  <TableCell colSpan={7} className="text-center py-6">
+                    Loading invoices...
+                  </TableCell>
+                </TableRow>
+              ) : filteredInvoices.length === 0 ? (
                 <TableRow>
                   <TableCell colSpan={7} className="text-center py-6">
                     No invoices found. Try a different filter or upload some invoices.
@@ -115,23 +167,22 @@ const InvoiceList = () => {
               ) : (
                 filteredInvoices.map((invoice) => (
                   <TableRow key={invoice.id}>
-                    <TableCell className="font-medium">{invoice.number}</TableCell>
-                    <TableCell>{new Date(invoice.date).toLocaleDateString()}</TableCell>
+                    <TableCell className="font-medium">{invoice.invoice_number}</TableCell>
+                    <TableCell>{new Date(invoice.invoice_date).toLocaleDateString()}</TableCell>
                     <TableCell className="capitalize">{invoice.type}</TableCell>
                     <TableCell>{invoice.amount.toLocaleString()}</TableCell>
-                    <TableCell>{invoice.gstAmount.toLocaleString()} ({invoice.gstRate}%)</TableCell>
+                    <TableCell>{invoice.gst_amount.toLocaleString()} ({invoice.gst_rate}%)</TableCell>
                     <TableCell>{getStatusBadge(invoice.status)}</TableCell>
                     <TableCell className="text-right space-x-2">
                       <Button variant="ghost" size="sm">
-                        <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
-                        </svg>
+                        <Eye className="h-4 w-4" />
                       </Button>
-                      <Button variant="ghost" size="sm">
-                        <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                        </svg>
+                      <Button 
+                        variant="ghost" 
+                        size="sm" 
+                        onClick={() => handleDeleteInvoice(invoice.id)}
+                      >
+                        <Trash2 className="h-4 w-4" />
                       </Button>
                     </TableCell>
                   </TableRow>

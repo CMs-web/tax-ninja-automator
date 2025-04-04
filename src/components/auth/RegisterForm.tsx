@@ -6,6 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { useToast } from "@/components/ui/use-toast";
+import { signUp } from "@/integrations/supabase/client";
 
 const RegisterForm = () => {
   const [businessName, setBusinessName] = useState("");
@@ -33,18 +34,16 @@ const RegisterForm = () => {
     setIsLoading(true);
 
     try {
-      // This is a mock registration - in a real app you'd register with Supabase or another auth provider
-      console.log("Registering business:", {
-        businessName,
-        email,
-        phone,
-        gstin
-      });
+      const { data, error } = await signUp(email, password);
       
-      // Simulate successful registration
+      if (error) {
+        throw error;
+      }
+      
+      // If successful but needs email verification
       toast({
         title: "Registration Successful",
-        description: "Your account has been created. Please login.",
+        description: "Your account has been created. Please verify your email before logging in.",
       });
       
       navigate("/login");
@@ -52,7 +51,7 @@ const RegisterForm = () => {
       console.error("Registration error:", error);
       toast({
         title: "Registration Failed",
-        description: "There was an error creating your account. Please try again.",
+        description: error instanceof Error ? error.message : "There was an error creating your account. Please try again.",
         variant: "destructive",
       });
     } finally {
@@ -61,9 +60,10 @@ const RegisterForm = () => {
   };
 
   return (
-    <Card className="w-full max-w-md mx-auto">
+    <Card className="w-full max-w-md mx-auto border border-emerald-100">
+      <div className="absolute inset-x-0 h-1 bg-gradient-to-r from-emerald-400 to-emerald-600" />
       <CardHeader>
-        <CardTitle className="text-2xl font-bold text-gst-primary">Create Your Account</CardTitle>
+        <CardTitle className="text-2xl font-bold text-emerald-700">Create Your Account</CardTitle>
         <CardDescription>
           Register to start automating your GST filing process
         </CardDescription>
@@ -77,7 +77,7 @@ const RegisterForm = () => {
               value={businessName}
               onChange={(e) => setBusinessName(e.target.value)}
               required
-              className="gst-input-field"
+              className="border-emerald-100 focus:border-emerald-300"
             />
           </div>
           
@@ -90,7 +90,7 @@ const RegisterForm = () => {
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               required
-              className="gst-input-field"
+              className="border-emerald-100 focus:border-emerald-300"
             />
           </div>
           
@@ -101,7 +101,7 @@ const RegisterForm = () => {
               value={phone}
               onChange={(e) => setPhone(e.target.value)}
               required
-              className="gst-input-field"
+              className="border-emerald-100 focus:border-emerald-300"
             />
           </div>
           
@@ -113,7 +113,7 @@ const RegisterForm = () => {
               value={gstin}
               onChange={(e) => setGstin(e.target.value)}
               required
-              className="gst-input-field"
+              className="border-emerald-100 focus:border-emerald-300"
             />
           </div>
           
@@ -125,7 +125,7 @@ const RegisterForm = () => {
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               required
-              className="gst-input-field"
+              className="border-emerald-100 focus:border-emerald-300"
             />
           </div>
           
@@ -137,13 +137,13 @@ const RegisterForm = () => {
               value={confirmPassword}
               onChange={(e) => setConfirmPassword(e.target.value)}
               required
-              className="gst-input-field"
+              className="border-emerald-100 focus:border-emerald-300"
             />
           </div>
           
           <Button 
             type="submit" 
-            className="w-full bg-gst-secondary hover:bg-gst-primary text-white"
+            className="w-full bg-emerald-600 hover:bg-emerald-700 text-white"
             disabled={isLoading}
           >
             {isLoading ? "Creating Account..." : "Register"}
@@ -153,7 +153,7 @@ const RegisterForm = () => {
       <CardFooter className="flex justify-center border-t pt-4">
         <p className="text-sm text-gray-600">
           Already have an account?{" "}
-          <a href="/login" className="text-gst-secondary hover:underline">
+          <a href="/login" className="text-emerald-600 hover:underline">
             Login now
           </a>
         </p>

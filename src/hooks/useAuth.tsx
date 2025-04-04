@@ -1,3 +1,4 @@
+
 import {
   useEffect,
   useState,
@@ -6,15 +7,16 @@ import {
   ReactNode,
 } from "react";
 import { User, Session } from "@supabase/supabase-js";
-import { supabase } from "@/integrations/supabase/client";
+import { supabase, getCurrentSession } from "@/integrations/supabase/client";
 
 type AuthContextType = {
   user: User | null;
   session: Session | null;
   isLoading: boolean;
-  signIn: (email: string, password: string) => Promise<any>;
-  signUp: (email: string, password: string) => Promise<any>;
+  setUser: (user: User | null) => void;
+  setSession: (session: Session | null) => void;
   signOut: () => Promise<void>;
+  isAdmin: boolean;
 };
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -23,6 +25,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [user, setUser] = useState<User | null>(null);
   const [session, setSession] = useState<Session | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [isAdmin, setIsAdmin] = useState(false);
 
   useEffect(() => {
     // Set up auth state listener first
@@ -31,42 +34,67 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     } = supabase.auth.onAuthStateChange((event, session) => {
       setSession(session);
       setUser(session?.user ?? null);
+      
+      // Check if user is admin when session changes
+      if (session?.user) {
+        checkAdminStatus(session.user.id);
+      } else {
+        setIsAdmin(false);
+      }
+      
       setIsLoading(false);
     });
 
     // Then check for existing session
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setSession(session);
-      setUser(session?.user ?? null);
+    const initSession = async () => {
+      const { data } = await getCurrentSession();
+      setSession(data.session);
+      setUser(data.session?.user ?? null);
+      
+      // Check admin status
+      if (data.session?.user) {
+        checkAdminStatus(data.session.user.id);
+      }
+      
       setIsLoading(false);
-    });
+    };
+    
+    initSession();
 
     return () => {
       subscription.unsubscribe();
     };
   }, []);
-
-  const signIn = async (email: string, password: string) => {
-    return supabase.auth.signInWithPassword({ email, password });
-  };
-
-  const signUp = async (email: string, password: string) => {
-    return supabase.auth.signUp({ email, password });
+  
+  // Function to check if the user is an admin
+  const checkAdminStatus = async (userId: string) => {
+    try {
+      const { data, error } = await supabase
+        .rpc('is_admin', { uid: userId });
+        
+      if (error) throw error;
+      setIsAdmin(data || false);
+    } catch (error) {
+      console.error("Error checking admin status:", error);
+      setIsAdmin(false);
+    }
   };
 
   const signOut = async () => {
     await supabase.auth.signOut();
     setUser(null);
     setSession(null);
+    setIsAdmin(false);
   };
 
   const value = {
     user,
     session,
     isLoading,
-    signIn,
-    signUp,
+    setUser,
+    setSession,
     signOut,
+    isAdmin,
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

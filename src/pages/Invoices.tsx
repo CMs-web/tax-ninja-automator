@@ -1,32 +1,15 @@
 
-import React, { useEffect } from "react";
-import { useNavigate } from "react-router-dom";
+import React from "react";
 import DashboardLayout from "@/components/dashboard/DashboardLayout";
 import InvoiceUploader from "@/components/invoices/InvoiceUploader";
 import InvoiceList from "@/components/invoices/InvoiceList";
 
 const Invoices = () => {
-  const navigate = useNavigate();
-  
-  // Check if user is authenticated
-  const isAuthenticated = localStorage.getItem("isAuthenticated") === "true";
-  
-  useEffect(() => {
-    // If not authenticated, redirect to login
-    if (!isAuthenticated) {
-      navigate("/login");
-    }
-  }, [isAuthenticated, navigate]);
-  
-  if (!isAuthenticated) {
-    return null; // Don't render anything while checking authentication
-  }
-  
   return (
     <DashboardLayout>
       <div className="space-y-6">
         <div>
-          <h1 className="text-2xl font-bold text-gst-primary">Invoice Management</h1>
+          <h1 className="text-2xl font-bold text-emerald-700">Invoice Management</h1>
           <p className="text-muted-foreground">
             Upload and manage your sales and purchase invoices for GST filing
           </p>

@@ -6,25 +6,33 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { useToast } from "@/components/ui/use-toast";
+import { signIn } from "@/integrations/supabase/client";
+import { useAuth } from "@/hooks/useAuth";
 
 const LoginForm = () => {
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
+  const [email, setEmail] = useState("admin@taxninja.com"); // Pre-filled for testing
+  const [password, setPassword] = useState("admintest123"); // Pre-filled for testing
   const [isLoading, setIsLoading] = useState(false);
   const navigate = useNavigate();
   const { toast } = useToast();
+  const { setSession, setUser } = useAuth();
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
 
     try {
-      // This is a mock login - in a real app you'd authenticate with Supabase or another auth provider
-      console.log("Logging in with:", email, password);
+      const { data, error } = await signIn(email, password);
       
-      // Simulate successful login
-      localStorage.setItem("isAuthenticated", "true");
-      localStorage.setItem("userEmail", email);
+      if (error) {
+        throw error;
+      }
+      
+      // Set auth context
+      if (data?.session) {
+        setSession(data.session);
+        setUser(data.session.user);
+      }
       
       toast({
         title: "Login Successful",
@@ -36,7 +44,7 @@ const LoginForm = () => {
       console.error("Login error:", error);
       toast({
         title: "Login Failed",
-        description: "Please check your credentials and try again.",
+        description: error instanceof Error ? error.message : "Please check your credentials and try again.",
         variant: "destructive",
       });
     } finally {
@@ -45,9 +53,10 @@ const LoginForm = () => {
   };
 
   return (
-    <Card className="w-full max-w-md mx-auto">
+    <Card className="w-full max-w-md mx-auto border border-emerald-100">
+      <div className="absolute inset-x-0 h-1 bg-gradient-to-r from-emerald-400 to-emerald-600" />
       <CardHeader>
-        <CardTitle className="text-2xl font-bold text-gst-primary">Login to Tax Ninja</CardTitle>
+        <CardTitle className="text-2xl font-bold text-emerald-700">Login to Tax Ninja</CardTitle>
         <CardDescription>
           Enter your credentials to access your GST filing dashboard
         </CardDescription>
@@ -63,7 +72,7 @@ const LoginForm = () => {
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               required
-              className="gst-input-field"
+              className="border-emerald-100 focus:border-emerald-300"
             />
           </div>
           <div className="space-y-2">
@@ -71,7 +80,7 @@ const LoginForm = () => {
               <Label htmlFor="password">Password</Label>
               <a 
                 href="/forgot-password" 
-                className="text-xs text-gst-secondary hover:underline"
+                className="text-xs text-emerald-600 hover:underline"
               >
                 Forgot password?
               </a>
@@ -82,12 +91,12 @@ const LoginForm = () => {
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               required
-              className="gst-input-field"
+              className="border-emerald-100 focus:border-emerald-300"
             />
           </div>
           <Button 
             type="submit" 
-            className="w-full bg-gst-secondary hover:bg-gst-primary text-white"
+            className="w-full bg-emerald-600 hover:bg-emerald-700 text-white"
             disabled={isLoading}
           >
             {isLoading ? "Logging in..." : "Login"}
@@ -97,7 +106,7 @@ const LoginForm = () => {
       <CardFooter className="flex justify-center border-t pt-4">
         <p className="text-sm text-gray-600">
           Don't have an account?{" "}
-          <a href="/register" className="text-gst-secondary hover:underline">
+          <a href="/register" className="text-emerald-600 hover:underline">
             Register now
           </a>
         </p>

@@ -1,3 +1,4 @@
+
 import React, { useState } from "react";
 import {
   Card,
@@ -11,9 +12,9 @@ import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/components/ui/use-toast";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
-import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { Upload, FileText, X } from "lucide-react";
+import { invoicesService } from "@/services/apiService";
 
 const InvoiceUploader = () => {
   const [files, setFiles] = useState<File[]>([]);
@@ -55,38 +56,26 @@ const InvoiceUploader = () => {
     setIsProcessing(true);
 
     try {
-      // Upload each file to Supabase Storage
+      // Process each file
       for (const file of files) {
-        // Create a unique file path for the invoice
-        const filePath = `invoices/${user.id}/${Date.now()}-${file.name}`;
-
         // Upload to Supabase Storage
-        const { data: storageData, error: storageError } =
-          await supabase.storage.from("invoices").upload(filePath, file);
-
-        if (storageError) {
-          throw new Error(storageError.message);
-        }
-
-        // Get the public URL
-        const { data: urlData } = supabase.storage
-          .from("invoices")
-          .getPublicUrl(filePath);
-
-        // Add invoice record to the database
-        const { error: dbError } = await supabase.from("invoices").insert({
+        const fileUrl = await invoicesService.uploadInvoiceFile(file, user.id);
+        
+        // Add invoice record to database
+        const newInvoice = {
           user_id: user.id,
           type: invoiceType as "sales" | "purchase",
+          invoice_number: `INV-${Date.now().toString().substring(7)}`,
+          invoice_date: new Date().toISOString().split('T')[0],
           amount: 0, // To be updated after OCR processing
           gst_rate: 0, // To be updated after OCR processing
           gst_amount: 0, // To be updated after OCR processing
-          date: new Date().toISOString().split("T")[0],
-          file_url: urlData.publicUrl,
-        });
-
-        if (dbError) {
-          throw new Error(dbError.message);
-        }
+          file_url: fileUrl
+        };
+        
+        const { error } = await invoicesService.addInvoice(newInvoice);
+        
+        if (error) throw error;
       }
 
       toast({
