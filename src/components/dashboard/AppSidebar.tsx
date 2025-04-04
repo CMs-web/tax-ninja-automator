@@ -39,7 +39,7 @@ const AppSidebar = () => {
       <SidebarHeader className="p-4 flex items-center">
         <SidebarTrigger />
         <div className="flex items-center space-x-2 mx-auto">
-          <div className="w-8 h-8 rounded-md bg-gst-accent flex items-center justify-center text-white font-bold">
+          <div className="w-8 h-8 rounded-md bg-emerald-500 flex items-center justify-center text-white font-bold">
             TN
           </div>
           <span className="text-lg font-semibold">Tax Ninja</span>
@@ -54,7 +54,7 @@ const AppSidebar = () => {
               <SidebarMenuItem>
                 <SidebarMenuButton 
                   asChild 
-                  active={isActive("/dashboard")}
+                  isActive={isActive("/dashboard")}
                   onClick={() => navigate("/dashboard")}
                 >
                   <div className="flex items-center space-x-3 w-full px-3 py-2 cursor-pointer">
@@ -69,7 +69,7 @@ const AppSidebar = () => {
               <SidebarMenuItem>
                 <SidebarMenuButton 
                   asChild 
-                  active={isActive("/invoices")}
+                  isActive={isActive("/invoices")}
                   onClick={() => navigate("/invoices")}
                 >
                   <div className="flex items-center space-x-3 w-full px-3 py-2 cursor-pointer">
@@ -84,7 +84,7 @@ const AppSidebar = () => {
               <SidebarMenuItem>
                 <SidebarMenuButton 
                   asChild 
-                  active={isActive("/gst-filing")}
+                  isActive={isActive("/gst-filing")}
                   onClick={() => navigate("/gst-filing")}
                 >
                   <div className="flex items-center space-x-3 w-full px-3 py-2 cursor-pointer">
@@ -99,7 +99,7 @@ const AppSidebar = () => {
               <SidebarMenuItem>
                 <SidebarMenuButton 
                   asChild 
-                  active={isActive("/payments")}
+                  isActive={isActive("/payments")}
                   onClick={() => navigate("/payments")}
                 >
                   <div className="flex items-center space-x-3 w-full px-3 py-2 cursor-pointer">
@@ -121,7 +121,7 @@ const AppSidebar = () => {
               <SidebarMenuItem>
                 <SidebarMenuButton 
                   asChild 
-                  active={isActive("/profile")}
+                  isActive={isActive("/profile")}
                   onClick={() => navigate("/profile")}
                 >
                   <div className="flex items-center space-x-3 w-full px-3 py-2 cursor-pointer">
@@ -136,7 +136,7 @@ const AppSidebar = () => {
               <SidebarMenuItem>
                 <SidebarMenuButton 
                   asChild 
-                  active={isActive("/settings")}
+                  isActive={isActive("/settings")}
                   onClick={() => navigate("/settings")}
                 >
                   <div className="flex items-center space-x-3 w-full px-3 py-2 cursor-pointer">
