@@ -7,17 +7,18 @@ import RecentFilings from "@/components/dashboard/RecentFilings";
 import UpcomingReminders from "@/components/dashboard/UpcomingReminders";
 import { useToast } from "@/components/ui/use-toast";
 import { useAuth } from "@/hooks/useAuth";
-import { apiService } from "@/services/apiService";
+import { dashboardService } from "@/services/apiService";
 
 const Dashboard = () => {
   const { user } = useAuth();
   const { toast } = useToast();
   const [isLoading, setIsLoading] = useState(true);
   const [stats, setStats] = useState({
-    salesCount: 0,
-    purchaseCount: 0,
-    pendingFilings: 0,
-    gstDue: 0
+    salesInvoicesCount: 0,
+    purchaseInvoicesCount: 0,
+    filingDueDate: null as string | null,
+    lastFiled: null as string | null,
+    complianceScore: 0
   });
   
   useEffect(() => {
@@ -26,7 +27,7 @@ const Dashboard = () => {
     const loadDashboardData = async () => {
       setIsLoading(true);
       try {
-        const dashboardStats = await apiService.getDashboardStats();
+        const dashboardStats = await dashboardService.getStats();
         setStats(dashboardStats);
       } catch (error) {
         console.error("Error loading dashboard data:", error);
@@ -41,7 +42,7 @@ const Dashboard = () => {
     };
 
     loadDashboardData();
-  }, [user]);
+  }, [user, toast]);
 
   return (
     <DashboardLayout>

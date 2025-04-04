@@ -30,18 +30,17 @@ const AppSidebar = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const { toast } = useToast();
-  const { signOut } = useAuth();
+  const { logout } = useAuth();
 
   const isActive = (path: string) => location.pathname === path;
 
   const handleLogout = async () => {
     try {
-      await signOut();
+      await logout();
       toast({
         title: "Logged Out",
         description: "You have been successfully logged out.",
       });
-      navigate("/login");
     } catch (error) {
       console.error("Logout error:", error);
       toast({

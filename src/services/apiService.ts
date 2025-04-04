@@ -1,9 +1,8 @@
-
 import { supabase } from "@/integrations/supabase/client";
 import { Invoice, GstReturn, Payment } from "@/types";
 
-export const apiService = {
-  // Profile API
+// Profile service
+export const profileService = {
   async getProfile(userId: string) {
     if (!userId) return null;
     
@@ -34,10 +33,12 @@ export const apiService = {
     
     return data;
   },
-  
-  // Invoice API
-  async getInvoices(userId: string) {
-    if (!userId) return [];
+};
+
+// Invoice service
+export const invoicesService = {
+  async getAll(userId: string) {
+    if (!userId) return { data: [] };
     
     const { data, error } = await supabase
       .from('invoices')
@@ -50,11 +51,11 @@ export const apiService = {
       throw error;
     }
     
-    return data;
+    return { data };
   },
   
-  async getInvoicesByType(userId: string, type: 'sales' | 'purchase') {
-    if (!userId) return [];
+  async getByType(userId: string, type: 'sales' | 'purchase') {
+    if (!userId) return { data: [] };
     
     const { data, error } = await supabase
       .from('invoices')
@@ -68,10 +69,10 @@ export const apiService = {
       throw error;
     }
     
-    return data;
+    return { data };
   },
   
-  async createInvoice(invoice: Omit<Invoice, 'id' | 'created_at' | 'updated_at'>) {
+  async create(invoice: Omit<Invoice, 'id' | 'created_at' | 'updated_at'>) {
     const { data, error } = await supabase
       .from('invoices')
       .insert([invoice]);
@@ -81,10 +82,10 @@ export const apiService = {
       throw error;
     }
     
-    return data;
+    return { data };
   },
   
-  async updateInvoice(invoiceId: string, invoiceData: any) {
+  async update(invoiceId: string, invoiceData: Partial<Invoice>) {
     const { data, error } = await supabase
       .from('invoices')
       .update(invoiceData)
@@ -95,10 +96,10 @@ export const apiService = {
       throw error;
     }
     
-    return data;
+    return { data };
   },
   
-  async deleteInvoice(invoiceId: string) {
+  async delete(invoiceId: string) {
     const { error } = await supabase
       .from('invoices')
       .delete()
@@ -111,10 +112,12 @@ export const apiService = {
     
     return true;
   },
-  
-  // GstReturns API
-  async getGstReturns(userId: string) {
-    if (!userId) return [];
+};
+
+// GST Returns service
+export const gstReturnsService = {
+  async getAll(userId: string) {
+    if (!userId) return { data: [] };
     
     const { data, error } = await supabase
       .from('gst_returns')
@@ -127,11 +130,11 @@ export const apiService = {
       throw error;
     }
     
-    return data;
+    return { data };
   },
   
-  async getGstReturn(returnId: string) {
-    if (!returnId) return null;
+  async getById(returnId: string) {
+    if (!returnId) return { data: null };
     
     const { data, error } = await supabase
       .from('gst_returns')
@@ -144,10 +147,10 @@ export const apiService = {
       throw error;
     }
     
-    return data;
+    return { data };
   },
   
-  async createGstReturn(gstReturn: Omit<GstReturn, 'id' | 'created_at' | 'updated_at'>) {
+  async create(gstReturn: Omit<GstReturn, 'id' | 'created_at' | 'updated_at'>) {
     const { data, error } = await supabase
       .from('gst_returns')
       .insert([gstReturn]);
@@ -157,10 +160,10 @@ export const apiService = {
       throw error;
     }
     
-    return data;
+    return { data };
   },
   
-  async updateGstReturnStatus(returnId: string, status: 'pending' | 'submitted' | 'paid', filedDate?: string) {
+  async updateStatus(returnId: string, status: 'pending' | 'submitted' | 'paid', filedDate?: string) {
     const updateData: any = { 
       status, 
       updated_at: new Date().toISOString() 
@@ -180,12 +183,14 @@ export const apiService = {
       throw error;
     }
     
-    return data;
+    return { data };
   },
-  
-  // Payments API
-  async getPaymentsByUser(userId: string) {
-    if (!userId) return [];
+};
+
+// Payments service
+export const paymentsService = {  
+  async getByUser(userId: string) {
+    if (!userId) return { data: [] };
     
     const { data, error } = await supabase
       .from('payments')
@@ -198,10 +203,10 @@ export const apiService = {
       throw error;
     }
     
-    return data;
+    return { data };
   },
   
-  async createPayment(payment: Omit<Payment, 'id' | 'created_at' | 'updated_at'>) {
+  async create(payment: Omit<Payment, 'id' | 'created_at' | 'updated_at'>) {
     const { data, error } = await supabase
       .from('payments')
       .insert([payment]);
@@ -211,10 +216,10 @@ export const apiService = {
       throw error;
     }
     
-    return data;
+    return { data };
   },
   
-  async updatePaymentStatus(paymentId: string, status: 'pending' | 'processing' | 'completed' | 'failed') {
+  async updateStatus(paymentId: string, status: 'pending' | 'processing' | 'completed' | 'failed') {
     const { data, error } = await supabase
       .from('payments')
       .update({ status })
@@ -225,14 +230,25 @@ export const apiService = {
       throw error;
     }
     
-    return data;
+    return { data };
   },
-  
-  // Dashboard API
-  async getDashboardStats() {
+};
+
+// Dashboard service
+export const dashboardService = {
+  async getStats() {
     try {
       const user = (await supabase.auth.getUser()).data.user;
-      if (!user) return { salesCount: 0, purchaseCount: 0, pendingFilings: 0, gstDue: 0 };
+      
+      if (!user) {
+        return {
+          salesInvoicesCount: 0,
+          purchaseInvoicesCount: 0,
+          filingDueDate: null,
+          lastFiled: null,
+          complianceScore: 0
+        };
+      }
       
       const userId = user.id;
       
@@ -250,19 +266,50 @@ export const apiService = {
         .eq('user_id', userId)
         .eq('type', 'purchase');
       
-      // Get pending filings
-      const { data: pendingFilings, error: filingsError } = await supabase
+      // Get GST filings
+      const { data: gstFilings, error: filingsError } = await supabase
         .from('gst_returns')
-        .select('id, gst_payable')
+        .select('*')
         .eq('user_id', userId)
-        .eq('status', 'pending');
+        .order('due_date', { ascending: true });
       
-      // Calculate total GST due
-      let gstDue = 0;
-      if (pendingFilings) {
-        gstDue = pendingFilings.reduce((sum, currentReturn) => {
-          return sum + (currentReturn ? parseFloat(currentReturn.gst_payable as any) || 0 : 0);
-        }, 0);
+      // Find next filing due
+      let filingDueDate = null;
+      let lastFiled = null;
+      let complianceScore = 0;
+      
+      if (gstFilings && gstFilings.length > 0) {
+        // Find pending filing with earliest due date
+        const pendingFilings = gstFilings.filter(filing => filing.status === 'pending');
+        if (pendingFilings.length > 0) {
+          filingDueDate = pendingFilings[0].due_date;
+        }
+        
+        // Find most recent filed return
+        const filedReturns = gstFilings.filter(filing => filing.status === 'submitted' || filing.status === 'paid');
+        if (filedReturns.length > 0) {
+          lastFiled = filedReturns[0].filed_date;
+        }
+        
+        // Calculate compliance score (percentage of returns filed on time)
+        const dueFilings = gstFilings.filter(filing => {
+          const dueDate = new Date(filing.due_date);
+          const today = new Date();
+          return dueDate < today;
+        });
+        
+        if (dueFilings.length > 0) {
+          const filedOnTime = dueFilings.filter(filing => {
+            if (!filing.filed_date) return false;
+            const filedDate = new Date(filing.filed_date);
+            const dueDate = new Date(filing.due_date);
+            return filedDate <= dueDate;
+          });
+          
+          complianceScore = Math.round((filedOnTime.length / dueFilings.length) * 100);
+        } else {
+          complianceScore = 100; // No missed deadlines yet
+        }
       }
       
       if (salesError || purchaseError || filingsError) {
@@ -270,15 +317,41 @@ export const apiService = {
       }
       
       return {
-        salesCount: salesInvoices?.length || 0,
-        purchaseCount: purchaseInvoices?.length || 0,
-        pendingFilings: pendingFilings?.length || 0,
-        gstDue: gstDue
+        salesInvoicesCount: salesInvoices?.length || 0,
+        purchaseInvoicesCount: purchaseInvoices?.length || 0,
+        filingDueDate,
+        lastFiled,
+        complianceScore
       };
       
     } catch (error) {
-      console.error('Error in getDashboardStats:', error);
-      return { salesCount: 0, purchaseCount: 0, pendingFilings: 0, gstDue: 0 };
+      console.error('Error in getStats:', error);
+      return {
+        salesInvoicesCount: 0,
+        purchaseInvoicesCount: 0,
+        filingDueDate: null,
+        lastFiled: null,
+        complianceScore: 0
+      };
     }
   }
+};
+
+// Keep backward compatibility for existing code
+export const apiService = {
+  getProfile: profileService.getProfile,
+  updateProfile: profileService.updateProfile,
+  getInvoices: invoicesService.getAll,
+  getInvoicesByType: invoicesService.getByType,
+  createInvoice: invoicesService.create,
+  updateInvoice: invoicesService.update,
+  deleteInvoice: invoicesService.delete,
+  getGstReturns: gstReturnsService.getAll,
+  getGstReturn: gstReturnsService.getById,
+  createGstReturn: gstReturnsService.create, 
+  updateGstReturnStatus: gstReturnsService.updateStatus,
+  getPaymentsByUser: paymentsService.getByUser,
+  createPayment: paymentsService.create,
+  updatePaymentStatus: paymentsService.updateStatus,
+  getDashboardStats: dashboardService.getStats
 };
