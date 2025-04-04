@@ -1,4 +1,3 @@
-
 import type { Config } from "tailwindcss";
 
 export default {
@@ -65,17 +64,20 @@ export default {
 				},
 				// GST Tax Ninja custom colors
 				gst: {
-					primary: '#1A365D',
-					secondary: '#2C7A7B',
-					accent: '#4FD1C5',
-					light: '#E6FFFA',
-					dark: '#234E52',
+					primary: '#10b981', // emerald-500
+					secondary: '#059669', // emerald-600
+					accent: '#34d399', // emerald-400
+					light: '#ecfdf5', // emerald-50
+					dark: '#064e3b', // emerald-900
 				}
 			},
 			borderRadius: {
 				lg: 'var(--radius)',
 				md: 'calc(var(--radius) - 2px)',
 				sm: 'calc(var(--radius) - 4px)'
+			},
+			fontFamily: {
+				sans: ['Inter', 'sans-serif'],
 			},
 			keyframes: {
 				'accordion-down': {
@@ -107,6 +109,9 @@ export default {
 				'accordion-down': 'accordion-down 0.2s ease-out',
 				'accordion-up': 'accordion-up 0.2s ease-out',
 				'fade-in': 'fade-in 0.5s ease-out'
+			},
+			boxShadow: {
+				'soft': '0 4px 20px rgba(0, 0, 0, 0.05)',
 			}
 		}
 	},

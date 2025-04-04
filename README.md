@@ -1,73 +1,96 @@
-# Welcome to your Lovable project
+# Tax Ninja - Automated GST Filing SaaS
 
-## Project info
+A modern, automated GST filing platform built with Next.js, Node.js, and Supabase.
 
-**URL**: https://lovable.dev/projects/88858c9e-39af-4dae-bb95-3f1c6f541557
+## Features
 
-## How can I edit this code?
+- 🔐 Secure Authentication & Authorization
+- 📄 Automated Invoice Processing with OCR
+- 💰 GST Calculation & Filing
+- 💳 Integrated Payment Processing
+- 📱 Real-time Notifications
+- 📊 Comprehensive Dashboard
+- 🔄 Automated GST Return Filing
 
-There are several ways of editing your application.
+## Tech Stack
 
-**Use Lovable**
+### Frontend
+- React.js
+- TypeScript
+- Tailwind CSS
+- Shadcn UI
+- React Query
 
-Simply visit the [Lovable Project](https://lovable.dev/projects/88858c9e-39af-4dae-bb95-3f1c6f541557) and start prompting.
+### Backend
+- Node.js with Express.js
+- Supabase (PostgreSQL)
+- Bull.js for Queue Processing
+- JWT Authentication
 
-Changes made via Lovable will be committed automatically to this repo.
+### External Services
+- Google Vision API (OCR)
+- GST Suvidha Provider (GSP) API
+- Razorpay Payment Gateway
+- Twilio (SMS/WhatsApp)
+- SendGrid (Email)
 
-**Use your preferred IDE**
+## Getting Started
 
-If you want to work locally using your own IDE, you can clone this repo and push changes. Pushed changes will also be reflected in Lovable.
+### Prerequisites
+- Node.js >= 18
+- npm or yarn
+- Supabase Account
+- Required API Keys (GSP, Razorpay, etc.)
 
-The only requirement is having Node.js & npm installed - [install with nvm](https://github.com/nvm-sh/nvm#installing-and-updating)
+### Installation
 
-Follow these steps:
+1. Clone the repository:
+```bash
+git clone https://github.com/yourusername/tax-ninja.git
+cd tax-ninja
+```
 
-```sh
-# Step 1: Clone the repository using the project's Git URL.
-git clone <YOUR_GIT_URL>
+2. Install dependencies:
+```bash
+npm install
+```
 
-# Step 2: Navigate to the project directory.
-cd <YOUR_PROJECT_NAME>
+3. Set up environment variables:
+```bash
+cp .env.example .env
+```
 
-# Step 3: Install the necessary dependencies.
-npm i
-
-# Step 4: Start the development server with auto-reloading and an instant preview.
+4. Start the development server:
+```bash
 npm run dev
 ```
 
-**Edit a file directly in GitHub**
+## Project Structure
 
-- Navigate to the desired file(s).
-- Click the "Edit" button (pencil icon) at the top right of the file view.
-- Make your changes and commit the changes.
+```
+tax-ninja/
+├── src/
+│   ├── app/              # Next.js app directory
+│   ├── components/       # Reusable UI components
+│   ├── lib/             # Utility functions and helpers
+│   ├── api/             # API routes
+│   └── types/           # TypeScript type definitions
+├── public/              # Static assets
+└── prisma/             # Database schema and migrations
+```
 
-**Use GitHub Codespaces**
+## Contributing
 
-- Navigate to the main page of your repository.
-- Click on the "Code" button (green button) near the top right.
-- Select the "Codespaces" tab.
-- Click on "New codespace" to launch a new Codespace environment.
-- Edit files directly within the Codespace and commit and push your changes once you're done.
+1. Fork the repository
+2. Create your feature branch (`git checkout -b feature/amazing-feature`)
+3. Commit your changes (`git commit -m 'Add some amazing feature'`)
+4. Push to the branch (`git push origin feature/amazing-feature`)
+5. Open a Pull Request
 
-## What technologies are used for this project?
+## License
 
-This project is built with:
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
-- Vite
-- TypeScript
-- React
-- shadcn-ui
-- Tailwind CSS
+## Support
 
-## How can I deploy this project?
-
-Simply open [Lovable](https://lovable.dev/projects/88858c9e-39af-4dae-bb95-3f1c6f541557) and click on Share -> Publish.
-
-## Can I connect a custom domain to my Lovable project?
-
-Yes it is!
-
-To connect a domain, navigate to Project > Settings > Domains and click Connect Domain.
-
-Read more here: [Setting up a custom domain](https://docs.lovable.dev/tips-tricks/custom-domain#step-by-step-guide)
+For support, email support@taxninja.com or join our Slack channel.

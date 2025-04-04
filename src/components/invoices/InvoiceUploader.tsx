@@ -1,16 +1,26 @@
-
 import React, { useState } from "react";
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardFooter,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/components/ui/use-toast";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import { supabase } from "@/integrations/supabase/client";
+import { useAuth } from "@/hooks/useAuth";
+import { Upload, FileText, X } from "lucide-react";
 
 const InvoiceUploader = () => {
   const [files, setFiles] = useState<File[]>([]);
   const [invoiceType, setInvoiceType] = useState("sales");
   const [isProcessing, setIsProcessing] = useState(false);
   const { toast } = useToast();
+  const { user } = useAuth();
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files) {
@@ -23,7 +33,7 @@ const InvoiceUploader = () => {
     setFiles((prev) => prev.filter((_, i) => i !== index));
   };
 
-  const handleUpload = () => {
+  const handleUpload = async () => {
     if (files.length === 0) {
       toast({
         title: "No files selected",
@@ -33,23 +43,80 @@ const InvoiceUploader = () => {
       return;
     }
 
+    if (!user) {
+      toast({
+        title: "Authentication required",
+        description: "Please log in to upload invoices",
+        variant: "destructive",
+      });
+      return;
+    }
+
     setIsProcessing(true);
 
-    // In a real app, you would upload the files to your server/backend here
-    setTimeout(() => {
+    try {
+      // Upload each file to Supabase Storage
+      for (const file of files) {
+        // Create a unique file path for the invoice
+        const filePath = `invoices/${user.id}/${Date.now()}-${file.name}`;
+
+        // Upload to Supabase Storage
+        const { data: storageData, error: storageError } =
+          await supabase.storage.from("invoices").upload(filePath, file);
+
+        if (storageError) {
+          throw new Error(storageError.message);
+        }
+
+        // Get the public URL
+        const { data: urlData } = supabase.storage
+          .from("invoices")
+          .getPublicUrl(filePath);
+
+        // Add invoice record to the database
+        const { error: dbError } = await supabase.from("invoices").insert({
+          user_id: user.id,
+          type: invoiceType as "sales" | "purchase",
+          amount: 0, // To be updated after OCR processing
+          gst_rate: 0, // To be updated after OCR processing
+          gst_amount: 0, // To be updated after OCR processing
+          date: new Date().toISOString().split("T")[0],
+          file_url: urlData.publicUrl,
+        });
+
+        if (dbError) {
+          throw new Error(dbError.message);
+        }
+      }
+
       toast({
-        title: "Invoices processed successfully",
-        description: `${files.length} ${invoiceType} invoices have been processed and data extracted.`,
+        title: "Invoices uploaded successfully",
+        description: `${files.length} ${invoiceType} invoices have been uploaded and are being processed.`,
       });
+
       setFiles([]);
+    } catch (error) {
+      console.error("Upload error:", error);
+      toast({
+        title: "Upload failed",
+        description:
+          error instanceof Error
+            ? error.message
+            : "An unexpected error occurred",
+        variant: "destructive",
+      });
+    } finally {
       setIsProcessing(false);
-    }, 2000);
+    }
   };
 
   return (
-    <Card className="gst-dashboard-card">
+    <Card className="overflow-hidden border border-emerald-100">
+      <div className="absolute inset-x-0 h-1 bg-gradient-to-r from-emerald-400 to-emerald-600" />
       <CardHeader className="pb-2">
-        <CardTitle className="text-xl font-semibold text-gst-primary">Upload Invoices</CardTitle>
+        <CardTitle className="text-xl font-medium text-emerald-700">
+          Upload Invoices
+        </CardTitle>
         <CardDescription>
           Upload your invoices to automatically extract GST data
         </CardDescription>
@@ -71,29 +138,21 @@ const InvoiceUploader = () => {
             </div>
           </RadioGroup>
 
-          <div className="border-2 border-dashed border-gray-300 rounded-md p-6 flex flex-col items-center">
-            <svg
-              xmlns="http://www.w3.org/2000/svg"
-              className="h-12 w-12 text-gst-secondary mb-2"
-              fill="none"
-              viewBox="0 0 24 24"
-              stroke="currentColor"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"
-              />
-            </svg>
-            <p className="text-sm text-center text-muted-foreground mb-4">
+          <div className="border-2 border-dashed border-emerald-200 rounded-xl p-8 flex flex-col items-center bg-emerald-50/50 hover:bg-emerald-50 transition-colors">
+            <Upload
+              className="h-12 w-12 text-emerald-500 mb-3"
+              strokeWidth={1.5}
+            />
+            <p className="text-sm text-center text-muted-foreground mb-4 max-w-xs">
               Drag & drop PDF or image files here, or click to select files
             </p>
             <div className="relative">
               <Button
                 variant="outline"
+                className="border-emerald-200 hover:border-emerald-300 hover:bg-emerald-50"
                 disabled={isProcessing}
               >
+                <FileText className="mr-2 h-4 w-4" />
                 Select Files
                 <input
                   type="file"
@@ -106,23 +165,27 @@ const InvoiceUploader = () => {
               </Button>
             </div>
           </div>
-          
+
           {files.length > 0 && (
             <div className="space-y-3 mt-4">
-              <h4 className="text-sm font-medium">Selected Files ({files.length})</h4>
+              <h4 className="text-sm font-medium text-emerald-800">
+                Selected Files ({files.length})
+              </h4>
               <div className="max-h-40 overflow-y-auto space-y-2">
                 {files.map((file, index) => (
-                  <div key={index} className="flex items-center justify-between bg-gray-50 p-2 rounded-md text-sm">
+                  <div
+                    key={index}
+                    className="flex items-center justify-between bg-emerald-50 p-3 rounded-lg text-sm border border-emerald-100"
+                  >
                     <span className="truncate max-w-xs">{file.name}</span>
                     <Button
                       variant="ghost"
                       size="sm"
+                      className="hover:bg-emerald-100 hover:text-emerald-700"
                       onClick={() => handleRemoveFile(index)}
                       disabled={isProcessing}
                     >
-                      <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                      </svg>
+                      <X className="h-4 w-4" />
                     </Button>
                   </div>
                 ))}
@@ -133,7 +196,7 @@ const InvoiceUploader = () => {
       </CardContent>
       <CardFooter>
         <Button
-          className="w-full bg-gst-secondary hover:bg-gst-primary"
+          className="w-full bg-emerald-600 hover:bg-emerald-700"
           onClick={handleUpload}
           disabled={files.length === 0 || isProcessing}
         >
