@@ -6,32 +6,25 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { useToast } from "@/components/ui/use-toast";
-import { signIn } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 
 const LoginForm = () => {
-  const [email, setEmail] = useState("admin@taxninja.com"); // Pre-filled for testing
-  const [password, setPassword] = useState("admintest123"); // Pre-filled for testing
+  const [email, setEmail] = useState(""); 
+  const [password, setPassword] = useState(""); 
   const [isLoading, setIsLoading] = useState(false);
   const navigate = useNavigate();
   const { toast } = useToast();
-  const { setSession, setUser } = useAuth();
+  const { login } = useAuth();
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
 
     try {
-      const { data, error } = await signIn(email, password);
+      const { error } = await login(email, password);
       
       if (error) {
         throw error;
-      }
-      
-      // Set auth context
-      if (data?.session) {
-        setSession(data.session);
-        setUser(data.session.user);
       }
       
       toast({

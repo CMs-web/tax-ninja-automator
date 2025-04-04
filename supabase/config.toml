@@ -28,3 +28,9 @@ enabled = false
 
 [functions.create_test_user]
 verify_jwt = false
+
+[functions.init_storage]
+verify_jwt = false
+
+[functions.create_storage_policy]
+verify_jwt = false

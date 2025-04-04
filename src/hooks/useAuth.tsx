@@ -2,7 +2,7 @@
 import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { supabase } from "@/integrations/supabase/client";
 import { useNavigate } from 'react-router-dom';
-import { useToast } from './use-toast';
+import { useToast } from '@/hooks/use-toast';
 
 interface User {
   id: string;
@@ -14,6 +14,7 @@ interface AuthContextType {
   login: (email: string, password: string) => Promise<{ error: Error | null }>;
   logout: () => Promise<void>;
   loading: boolean;
+  isLoading: boolean; // Adding missing property
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -109,7 +110,13 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   };
 
   return (
-    <AuthContext.Provider value={{ user, login, logout, loading }}>
+    <AuthContext.Provider value={{ 
+      user, 
+      login, 
+      logout, 
+      loading,
+      isLoading: loading // Add the isLoading property
+    }}>
       {children}
     </AuthContext.Provider>
   );
