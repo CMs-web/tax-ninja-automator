@@ -44,12 +44,18 @@ export const invoiceService = {
     }
     
     try {
-      // Only execute this code when not in mock mode
-      // For now, just return empty data to satisfy TypeScript
-      return { data: [] };
+      const { data, error } = await supabase
+        .from('invoices')
+        .select('*')
+        .eq('user_id', userId)
+        .order('created_at', { ascending: false });
+      
+      if (error) throw error;
+      
+      return { data: data || [] };
     } catch (error) {
       console.error('Error fetching invoices:', error);
-      return { data: [] };
+      return { data: [], error };
     }
   },
 
@@ -64,12 +70,19 @@ export const invoiceService = {
     }
     
     try {
-      // Only execute this code when not in mock mode
-      // For now, just return empty data to satisfy TypeScript
-      return { data: [] };
+      const { data, error } = await supabase
+        .from('invoices')
+        .select('*')
+        .eq('user_id', userId)
+        .eq('type', type)
+        .order('created_at', { ascending: false });
+      
+      if (error) throw error;
+      
+      return { data: data || [] };
     } catch (error) {
       console.error(`Error fetching ${type} invoices:`, error);
-      return { data: [] };
+      return { data: [], error };
     }
   },
 
@@ -89,15 +102,15 @@ export const invoiceService = {
     }
 
     try {
-      // Only execute this code when not in mock mode
-      // For now, just return mock data to satisfy TypeScript
-      const newInvoice = {
-        ...invoice,
-        id: `mock-${Date.now()}`,
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString()
-      };
-      return { data: newInvoice };
+      const { data, error } = await supabase
+        .from('invoices')
+        .insert([invoice])
+        .select()
+        .single();
+      
+      if (error) throw error;
+      
+      return { data };
     } catch (error) {
       console.error('Error creating invoice:', error);
       return { error };
@@ -122,9 +135,16 @@ export const invoiceService = {
     }
 
     try {
-      // Only execute this code when not in mock mode
-      // For now, just return not found to satisfy TypeScript
-      return { error: 'Invoice not found' };
+      const { data, error } = await supabase
+        .from('invoices')
+        .update(invoiceData)
+        .eq('id', invoiceId)
+        .select()
+        .single();
+      
+      if (error) throw error;
+      
+      return { data };
     } catch (error) {
       console.error('Error updating invoice:', error);
       return { error };
@@ -134,9 +154,9 @@ export const invoiceService = {
   /**
    * Delete an invoice
    */
-  delete: async (invoiceId: string) => {
+  delete: async (userId: string, invoiceId: string) => {
     if (mockServices.enableMocks) {
-      const index = mockInvoices.findIndex(inv => inv.id === invoiceId);
+      const index = mockInvoices.findIndex(inv => inv.id === invoiceId && inv.user_id === userId);
       if (index !== -1) {
         mockInvoices.splice(index, 1);
         return { success: true };
@@ -145,8 +165,14 @@ export const invoiceService = {
     }
 
     try {
-      // Only execute this code when not in mock mode
-      // For now, just return success to satisfy TypeScript
+      const { error } = await supabase
+        .from('invoices')
+        .delete()
+        .eq('id', invoiceId)
+        .eq('user_id', userId);
+      
+      if (error) throw error;
+      
       return { success: true };
     } catch (error) {
       console.error('Error deleting invoice:', error);
@@ -161,13 +187,35 @@ export const invoiceService = {
     if (mockServices.enableMocks) {
       // Mock file upload with a delay
       await new Promise(resolve => setTimeout(resolve, 500));
-      return { fileUrl: `https://example.com/${userId}/${file.name}` };
+      return { 
+        fileUrl: `https://example.com/${userId}/${file.name}`,
+        fileName: file.name
+      };
     }
 
     try {
-      // Only execute this code when not in mock mode
-      // For now, just return mock URL to satisfy TypeScript
-      return { fileUrl: `https://example.com/${userId}/${file.name}` };
+      // Use userId as the folder name as suggested
+      const filePath = `${userId}/${file.name}`;
+      
+      // Upload the file to the invoices bucket
+      const { data, error } = await supabase.storage
+        .from('invoices')
+        .upload(filePath, file, {
+          cacheControl: '3600',
+          upsert: false
+        });
+      
+      if (error) throw error;
+      
+      // Get the public URL for the uploaded file
+      const { data: { publicUrl } } = supabase.storage
+        .from('invoices')
+        .getPublicUrl(data.path);
+      
+      return { 
+        fileUrl: publicUrl,
+        fileName: file.name
+      };
     } catch (error) {
       console.error('Error uploading invoice file:', error);
       return { error };

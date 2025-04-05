@@ -1,34 +1,47 @@
 
-import React, { useState, useEffect } from "react";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Button } from "@/components/ui/button";
+import React, { useEffect, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { 
+  Table, TableBody, TableCell, TableHead, 
+  TableHeader, TableRow
+} from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { useToast } from "@/components/ui/use-toast";
-import { useAuth } from "@/hooks/useAuth";
-import { format } from "date-fns";
-import { Edit, Trash2, Eye } from "lucide-react";
+import { FileText, Download, Trash2 } from "lucide-react";
+import { useToast } from "@/hooks/use-toast";
 import { invoiceService } from "@/services/invoiceService";
+import { Invoice } from "@/types/service";
+import { useAuth } from "@/hooks/useAuth";
+import { format, parseISO } from "date-fns";
 
 const InvoiceList = () => {
-  const [invoices, setInvoices] = useState([]);
+  const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const { user } = useAuth();
   const { toast } = useToast();
 
   useEffect(() => {
-    if (!user) return;
-
-    const loadInvoices = async () => {
+    const fetchInvoices = async () => {
+      if (!user) {
+        setInvoices([]);
+        setIsLoading(false);
+        return;
+      }
+      
       setIsLoading(true);
       try {
-        const { data } = await invoiceService.getAll(user.id);
-        setInvoices(data);
+        const { data, error } = await invoiceService.getAll(user.id);
+        
+        if (error) {
+          throw error;
+        }
+        
+        setInvoices(data || []);
       } catch (error) {
-        console.error("Error loading invoices:", error);
+        console.error("Error fetching invoices:", error);
         toast({
-          title: "Error",
-          description: "Failed to load invoices. Please try again later.",
+          title: "Failed to load invoices",
+          description: "There was an error loading your invoices. Please try again.",
           variant: "destructive",
         });
       } finally {
@@ -36,124 +49,152 @@ const InvoiceList = () => {
       }
     };
 
-    loadInvoices();
+    fetchInvoices();
+    
+    // Listen for invoice upload events
+    const handleInvoiceUploaded = () => {
+      fetchInvoices();
+    };
+    
+    window.addEventListener('invoice-uploaded', handleInvoiceUploaded);
+    
+    return () => {
+      window.removeEventListener('invoice-uploaded', handleInvoiceUploaded);
+    };
   }, [user, toast]);
 
-  const handleDeleteInvoice = async (id: string) => {
-    if (!window.confirm("Are you sure you want to delete this invoice?")) return;
-
+  const handleDelete = async (invoiceId: string) => {
+    if (!user) return;
+    
+    if (!confirm("Are you sure you want to delete this invoice?")) {
+      return;
+    }
+    
     try {
-      const { error } = await invoiceService.delete(id);
+      const { error } = await invoiceService.delete(user.id, invoiceId);
       
-      if (error) throw error;
+      if (error) {
+        throw error;
+      }
       
-      // Remove from local state
-      setInvoices(invoices.filter((invoice: any) => invoice.id !== id));
+      // Update the local state to remove the deleted invoice
+      setInvoices(invoices.filter(invoice => invoice.id !== invoiceId));
       
       toast({
         title: "Invoice Deleted",
-        description: "Invoice has been successfully deleted.",
+        description: "The invoice has been successfully deleted.",
       });
     } catch (error) {
       console.error("Error deleting invoice:", error);
       toast({
-        title: "Error",
-        description: "Failed to delete invoice. Please try again.",
+        title: "Delete Failed",
+        description: "There was an error deleting the invoice. Please try again.",
         variant: "destructive",
       });
     }
   };
 
+  const getStatusBadgeVariant = (status: string) => {
+    switch(status) {
+      case 'processed': return "success";
+      case 'error': return "destructive";
+      case 'pending': 
+      default: return "outline";
+    }
+  };
+
   const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat("en-IN", {
-      style: "currency",
-      currency: "INR",
+    return new Intl.NumberFormat('en-IN', {
+      style: 'currency',
+      currency: 'INR',
+      minimumFractionDigits: 2
     }).format(amount);
+  };
+  
+  const formatDate = (dateString: string) => {
+    try {
+      return format(parseISO(dateString), 'dd MMM yyyy');
+    } catch (error) {
+      return dateString;
+    }
   };
 
   return (
     <Card>
-      <CardHeader>
-        <CardTitle>All Invoices</CardTitle>
+      <CardHeader className="flex flex-row items-center justify-between">
+        <CardTitle>Recent Invoices</CardTitle>
       </CardHeader>
       <CardContent>
         {isLoading ? (
-          <div className="space-y-3">
-            <div className="h-8 bg-gray-100 animate-pulse w-full rounded-md"></div>
-            <div className="h-8 bg-gray-100 animate-pulse w-full rounded-md"></div>
-            <div className="h-8 bg-gray-100 animate-pulse w-full rounded-md"></div>
+          <div className="flex justify-center p-4">
+            <p>Loading invoices...</p>
           </div>
         ) : invoices.length > 0 ? (
-          <div className="overflow-x-auto">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Invoice #</TableHead>
-                  <TableHead>Date</TableHead>
-                  <TableHead>Vendor</TableHead>
-                  <TableHead>Amount</TableHead>
-                  <TableHead>GST</TableHead>
-                  <TableHead>Type</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead>Actions</TableHead>
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead className="w-[100px]">Type</TableHead>
+                <TableHead>Number</TableHead>
+                <TableHead>Date</TableHead>
+                <TableHead>Vendor/Customer</TableHead>
+                <TableHead>Amount</TableHead>
+                <TableHead>GST</TableHead>
+                <TableHead>Status</TableHead>
+                <TableHead className="text-right">Actions</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {invoices.map((invoice) => (
+                <TableRow key={invoice.id}>
+                  <TableCell>
+                    <Badge variant={invoice.type === 'sales' ? 'default' : 'secondary'}>
+                      {invoice.type === 'sales' ? 'Sales' : 'Purchase'}
+                    </Badge>
+                  </TableCell>
+                  <TableCell className="font-medium">{invoice.invoice_number}</TableCell>
+                  <TableCell>{formatDate(invoice.invoice_date)}</TableCell>
+                  <TableCell>{invoice.vendor}</TableCell>
+                  <TableCell>{formatCurrency(invoice.amount)}</TableCell>
+                  <TableCell>{formatCurrency(invoice.gst_amount)}</TableCell>
+                  <TableCell>
+                    <Badge variant={getStatusBadgeVariant(invoice.status)}>
+                      {invoice.status.charAt(0).toUpperCase() + invoice.status.slice(1)}
+                    </Badge>
+                  </TableCell>
+                  <TableCell className="text-right space-x-2">
+                    <Button size="icon" variant="ghost" asChild>
+                      <a href={invoice.file_url} target="_blank" rel="noopener noreferrer">
+                        <FileText className="h-4 w-4" />
+                        <span className="sr-only">View</span>
+                      </a>
+                    </Button>
+                    <Button size="icon" variant="ghost" asChild>
+                      <a href={invoice.file_url} download>
+                        <Download className="h-4 w-4" />
+                        <span className="sr-only">Download</span>
+                      </a>
+                    </Button>
+                    <Button 
+                      size="icon" 
+                      variant="ghost" 
+                      onClick={() => handleDelete(invoice.id)}
+                    >
+                      <Trash2 className="h-4 w-4" />
+                      <span className="sr-only">Delete</span>
+                    </Button>
+                  </TableCell>
                 </TableRow>
-              </TableHeader>
-              <TableBody>
-                {invoices.map((invoice: any) => (
-                  <TableRow key={invoice.id}>
-                    <TableCell className="font-medium">{invoice.invoice_number}</TableCell>
-                    <TableCell>{format(new Date(invoice.invoice_date), "dd MMM yyyy")}</TableCell>
-                    <TableCell>{invoice.vendor}</TableCell>
-                    <TableCell>{formatCurrency(invoice.amount)}</TableCell>
-                    <TableCell>{formatCurrency(invoice.gst_amount)}</TableCell>
-                    <TableCell>
-                      <Badge variant={invoice.type === "sales" ? "default" : "outline"}>
-                        {invoice.type}
-                      </Badge>
-                    </TableCell>
-                    <TableCell>
-                      <Badge 
-                        variant={
-                          invoice.status === "processed" 
-                            ? "success"
-                            : invoice.status === "error" 
-                              ? "destructive" 
-                              : "secondary"
-                        }
-                      >
-                        {invoice.status}
-                      </Badge>
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex space-x-1">
-                        {invoice.file_url && (
-                          <Button size="sm" variant="outline" asChild>
-                            <a href={invoice.file_url} target="_blank" rel="noreferrer">
-                              <Eye className="h-3.5 w-3.5" />
-                            </a>
-                          </Button>
-                        )}
-                        <Button size="sm" variant="outline">
-                          <Edit className="h-3.5 w-3.5" />
-                        </Button>
-                        <Button 
-                          size="sm" 
-                          variant="outline" 
-                          className="text-red-500 hover:text-red-700"
-                          onClick={() => handleDeleteInvoice(invoice.id)}
-                        >
-                          <Trash2 className="h-3.5 w-3.5" />
-                        </Button>
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </div>
+              ))}
+            </TableBody>
+          </Table>
         ) : (
-          <div className="text-center py-12">
-            <p className="text-muted-foreground">No invoices found. Upload an invoice to get started.</p>
+          <div className="flex flex-col items-center justify-center p-8 text-center">
+            <FileText className="h-12 w-12 text-gray-400 mb-4" />
+            <h3 className="text-lg font-medium mb-1">No Invoices Found</h3>
+            <p className="text-sm text-gray-500">
+              You haven't uploaded any invoices yet. <br />
+              Start by uploading your first invoice.
+            </p>
           </div>
         )}
       </CardContent>

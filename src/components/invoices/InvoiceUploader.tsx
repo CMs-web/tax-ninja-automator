@@ -5,10 +5,11 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
-import { useToast } from "@/components/ui/use-toast";
+import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/useAuth";
 import { Upload } from "lucide-react";
 import { invoiceService } from "@/services/invoiceService";
+import { format } from "date-fns";
 
 const InvoiceUploader = () => {
   const [file, setFile] = useState<File | null>(null);
@@ -28,7 +29,7 @@ const InvoiceUploader = () => {
     
     if (!user) {
       toast({
-        title: "Error",
+        title: "Authentication Error",
         description: "You must be logged in to upload invoices",
         variant: "destructive",
       });
@@ -37,7 +38,7 @@ const InvoiceUploader = () => {
     
     if (!file) {
       toast({
-        title: "Error",
+        title: "Missing File",
         description: "Please select a file to upload",
         variant: "destructive",
       });
@@ -48,20 +49,27 @@ const InvoiceUploader = () => {
     
     try {
       // Upload the file to Supabase storage
-      const { fileUrl, error: uploadError } = await invoiceService.uploadFile(user.id, file);
+      const { fileUrl, fileName, error: uploadError } = await invoiceService.uploadFile(user.id, file);
       
       if (uploadError) throw uploadError;
       
-      // Create the invoice record with properly typed status
+      if (!fileUrl) {
+        throw new Error("Failed to get file URL after upload");
+      }
+      
+      // Generate an invoice number based on timestamp and random number
+      const invoiceNumber = `INV-${Date.now().toString().slice(-6)}-${Math.floor(Math.random() * 1000)}`;
+      
+      // Create the invoice record
       const invoiceData = {
         user_id: user.id,
-        invoice_number: `INV-${Date.now().toString().slice(-6)}`, // Dummy invoice number
-        invoice_date: new Date().toISOString().split('T')[0],
-        vendor: file.name.split('.')[0], // Using filename as placeholder vendor
-        amount: Math.floor(Math.random() * 10000) + 1000, // Random amount
-        gst_amount: Math.floor(Math.random() * 1000) + 100, // Random GST amount
+        invoice_number: invoiceNumber,
+        invoice_date: format(new Date(), 'yyyy-MM-dd'),
+        vendor: fileName ? fileName.split('.')[0] : 'Unknown vendor', // Using filename as placeholder vendor
+        amount: Math.floor(Math.random() * 10000) + 1000, // This would be extracted from the invoice in production
+        gst_amount: Math.floor(Math.random() * 1000) + 100, // This would be extracted from the invoice in production
         type: invoiceType,
-        status: 'pending' as const,
+        status: 'pending' as const, // TypeScript needs this as const assertion
         file_url: fileUrl
       };
       
@@ -71,8 +79,12 @@ const InvoiceUploader = () => {
       
       toast({
         title: "Upload Successful",
-        description: "Your invoice has been uploaded and will be processed shortly.",
+        description: `Your ${invoiceType} invoice has been uploaded successfully.`,
       });
+      
+      // Dispatch custom event to notify other components (like InvoiceList) to refresh
+      const event = new CustomEvent('invoice-uploaded');
+      window.dispatchEvent(event);
       
       // Reset form
       setFile(null);
@@ -82,7 +94,7 @@ const InvoiceUploader = () => {
       console.error("Error uploading invoice:", error);
       toast({
         title: "Upload Failed",
-        description: "There was an error uploading your invoice. Please try again.",
+        description: error instanceof Error ? error.message : "There was an error uploading your invoice. Please try again.",
         variant: "destructive",
       });
     } finally {
@@ -139,7 +151,7 @@ const InvoiceUploader = () => {
         <CardFooter>
           <Button 
             type="submit" 
-            className="w-full"
+            className="w-full bg-emerald-600 hover:bg-emerald-700"
             disabled={!file || isUploading}
           >
             {isUploading ? "Uploading..." : "Upload Invoice"}
