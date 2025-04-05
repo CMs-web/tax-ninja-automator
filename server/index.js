@@ -127,10 +127,13 @@ app.post('/api/invoices/upload', upload.single('file'), async (req, res) => {
     
     console.log('Extracted data:', extractedData);
     
-    // Upload file to Supabase Storage
+    // Upload file to Supabase Storage using the service role key
+    // Important: When using the service role key, we bypass RLS policies
     const fileBuffer = fs.readFileSync(filePath);
     const fileExt = path.extname(req.file.originalname);
     const fileName = `${userId}/${Date.now()}${fileExt}`;
+    
+    console.log(`Uploading file to storage path: ${fileName}`);
     
     const { data: uploadData, error: uploadError } = await supabase.storage
       .from('invoices')
@@ -141,13 +144,13 @@ app.post('/api/invoices/upload', upload.single('file'), async (req, res) => {
     
     if (uploadError) {
       console.error('Error uploading to Supabase Storage:', uploadError);
-      return res.status(500).json({ error: 'Failed to upload file to storage' });
+      return res.status(500).json({ error: 'Failed to upload file to storage', details: uploadError });
     }
     
     // Get the public URL for the uploaded file
     const { data: { publicUrl } } = supabase.storage
       .from('invoices')
-      .getPublicUrl(uploadData.path);
+      .getPublicUrl(fileName);
     
     // Insert invoice data into Supabase database
     const invoiceData = {
@@ -162,6 +165,7 @@ app.post('/api/invoices/upload', upload.single('file'), async (req, res) => {
       file_url: publicUrl
     };
     
+    // Using service role key allows us to bypass RLS
     const { data: dbData, error: dbError } = await supabase
       .from('invoices')
       .insert([invoiceData])
@@ -169,7 +173,7 @@ app.post('/api/invoices/upload', upload.single('file'), async (req, res) => {
     
     if (dbError) {
       console.error('Error storing invoice in database:', dbError);
-      return res.status(500).json({ error: 'Failed to save invoice data' });
+      return res.status(500).json({ error: 'Failed to save invoice data', details: dbError });
     }
     
     // Clean up the local file
