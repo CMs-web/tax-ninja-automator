@@ -2,6 +2,9 @@
 import { supabase } from "@/integrations/supabase/client";
 import { Invoice, mockServices } from "@/types/service";
 
+// Define a custom TypeSafe client for the invoices table
+const invoicesTable = () => supabase.from('invoices');
+
 // Mock data for development
 const mockInvoices: Invoice[] = [
   {
@@ -44,11 +47,15 @@ export const invoiceService = {
     }
     
     try {
+      // Using TypeScript generics to tell Supabase what type to expect
       const { data, error } = await supabase
-        .from('invoices' as any)
+        .from('invoices')
         .select('*')
         .eq('user_id', userId)
-        .order('created_at', { ascending: false });
+        .order('created_at', { ascending: false }) as unknown as { 
+          data: Invoice[] | null, 
+          error: Error | null 
+        };
       
       if (error) throw error;
       
@@ -71,11 +78,14 @@ export const invoiceService = {
     
     try {
       const { data, error } = await supabase
-        .from('invoices' as any)
+        .from('invoices')
         .select('*')
         .eq('user_id', userId)
         .eq('type', type)
-        .order('created_at', { ascending: false });
+        .order('created_at', { ascending: false }) as unknown as { 
+          data: Invoice[] | null, 
+          error: Error | null 
+        };
       
       if (error) throw error;
       
@@ -103,10 +113,13 @@ export const invoiceService = {
 
     try {
       const { data, error } = await supabase
-        .from('invoices' as any)
-        .insert([invoice as any])
+        .from('invoices')
+        .insert([invoice])
         .select()
-        .single();
+        .single() as unknown as { 
+          data: Invoice | null, 
+          error: Error | null 
+        };
       
       if (error) throw error;
       
@@ -136,11 +149,14 @@ export const invoiceService = {
 
     try {
       const { data, error } = await supabase
-        .from('invoices' as any)
-        .update(invoiceData as any)
+        .from('invoices')
+        .update(invoiceData)
         .eq('id', invoiceId)
         .select()
-        .single();
+        .single() as unknown as { 
+          data: Invoice | null, 
+          error: Error | null 
+        };
       
       if (error) throw error;
       
@@ -166,10 +182,12 @@ export const invoiceService = {
 
     try {
       const { error } = await supabase
-        .from('invoices' as any)
+        .from('invoices')
         .delete()
         .eq('id', invoiceId)
-        .eq('user_id', userId);
+        .eq('user_id', userId) as unknown as { 
+          error: Error | null 
+        };
       
       if (error) throw error;
       
