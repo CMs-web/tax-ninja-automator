@@ -8,22 +8,8 @@ import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/useAuth";
 import { Upload } from "lucide-react";
-import { invoiceService } from "@/services/invoiceService";
-import { format } from "date-fns";
 
-// Simple function to extract invoice details from filename
-// In a real app, this would be replaced with OCR processing
-const extractInvoiceDetails = (fileName: string) => {
-  // Remove file extension
-  const nameWithoutExtension = fileName.split('.')[0];
-  
-  // Generate random but realistic invoice data
-  return {
-    vendor: nameWithoutExtension.replace(/_/g, ' '),
-    amount: Math.floor(Math.random() * 10000) + 1000,
-    gstAmount: Math.floor(Math.random() * 1800) + 200
-  };
-};
+const API_BASE_URL = "http://localhost:5000/api";
 
 const InvoiceUploader = () => {
   const [file, setFile] = useState<File | null>(null);
@@ -62,41 +48,29 @@ const InvoiceUploader = () => {
     setIsUploading(true);
     
     try {
-      // Upload the file to Supabase storage
-      const { fileUrl, fileName, error: uploadError } = await invoiceService.uploadFile(user.id, file);
+      // Create form data for the multipart/form-data request
+      const formData = new FormData();
+      formData.append('file', file);
+      formData.append('userId', user.id);
+      formData.append('invoiceType', invoiceType);
       
-      if (uploadError) throw uploadError;
+      // Call our backend API
+      const response = await fetch(`${API_BASE_URL}/invoices/upload`, {
+        method: 'POST',
+        body: formData,
+        // No Content-Type header needed as it's set automatically for FormData
+      });
       
-      if (!fileUrl) {
-        throw new Error("Failed to get file URL after upload");
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to upload invoice');
       }
       
-      // Get invoice details (would be replaced with OCR in production)
-      const details = extractInvoiceDetails(file.name);
-      
-      // Generate an invoice number based on timestamp and random number
-      const invoiceNumber = `INV-${Date.now().toString().slice(-6)}-${Math.floor(Math.random() * 1000)}`;
-      
-      // Create the invoice record
-      const invoiceData = {
-        user_id: user.id,
-        invoice_number: invoiceNumber,
-        invoice_date: format(new Date(), 'yyyy-MM-dd'),
-        vendor: details.vendor,
-        amount: details.amount,
-        gst_amount: details.gstAmount,
-        type: invoiceType,
-        status: 'pending' as const,
-        file_url: fileUrl
-      };
-      
-      const { error: createError } = await invoiceService.create(invoiceData);
-      
-      if (createError) throw createError;
+      const result = await response.json();
       
       toast({
         title: "Upload Successful",
-        description: `Your ${invoiceType} invoice has been uploaded successfully.`,
+        description: `Your ${invoiceType} invoice has been uploaded and processed successfully.`,
       });
       
       // Dispatch custom event to notify other components to refresh
@@ -153,7 +127,7 @@ const InvoiceUploader = () => {
               <Input 
                 id="invoice-file"
                 type="file" 
-                accept=".pdf,.jpg,.jpeg,.png" 
+                accept=".pdf,.jpg,.jpeg,.png,.webp" 
                 onChange={handleFileChange} 
                 className="max-w-xs"
               />
@@ -163,6 +137,9 @@ const InvoiceUploader = () => {
                 </p>
               )}
             </div>
+            <p className="text-xs text-gray-500 mt-2">
+              The system will automatically extract invoice details using OCR technology
+            </p>
           </div>
         </CardContent>
         <CardFooter>
@@ -171,7 +148,7 @@ const InvoiceUploader = () => {
             className="w-full bg-emerald-600 hover:bg-emerald-700"
             disabled={!file || isUploading}
           >
-            {isUploading ? "Uploading..." : "Upload Invoice"}
+            {isUploading ? "Uploading & Processing..." : "Upload Invoice"}
           </Button>
         </CardFooter>
       </form>

@@ -1,5 +1,7 @@
+
 import { supabase } from "@/integrations/supabase/client";
 import { Invoice } from "@/types/service";
+import { SupabaseTablesType } from "@/types/supabase";
 
 // Set this to false to use the real Supabase backend
 const USE_MOCK_DATA = false;
@@ -50,7 +52,7 @@ export const invoiceService = {
         .from('invoices')
         .select('*')
         .eq('user_id', userId)
-        .order('created_at', { ascending: false }) as any;
+        .order('created_at', { ascending: false }) as { data: SupabaseTablesType['invoices'][] | null, error: any };
       
       if (error) throw error;
       
@@ -77,7 +79,7 @@ export const invoiceService = {
         .select('*')
         .eq('user_id', userId)
         .eq('type', type)
-        .order('created_at', { ascending: false }) as any;
+        .order('created_at', { ascending: false }) as { data: SupabaseTablesType['invoices'][] | null, error: any };
       
       if (error) throw error;
       
@@ -107,12 +109,11 @@ export const invoiceService = {
       const { data, error } = await supabase
         .from('invoices')
         .insert([invoice])
-        .select()
-        .single() as any;
+        .select() as { data: SupabaseTablesType['invoices'][] | null, error: any };
       
       if (error) throw error;
       
-      return { data };
+      return { data: data?.[0] };
     } catch (error) {
       console.error('Error creating invoice:', error);
       return { error };
@@ -141,12 +142,11 @@ export const invoiceService = {
         .from('invoices')
         .update(invoiceData)
         .eq('id', invoiceId)
-        .select()
-        .single() as any;
+        .select() as { data: SupabaseTablesType['invoices'][] | null, error: any };
       
       if (error) throw error;
       
-      return { data };
+      return { data: data?.[0] };
     } catch (error) {
       console.error('Error updating invoice:', error);
       return { error };
@@ -171,7 +171,7 @@ export const invoiceService = {
         .from('invoices')
         .delete()
         .eq('id', invoiceId)
-        .eq('user_id', userId) as any;
+        .eq('user_id', userId) as { error: any };
       
       if (error) throw error;
       
@@ -184,6 +184,8 @@ export const invoiceService = {
 
   /**
    * Upload an invoice file to Supabase Storage
+   * This function is no longer used directly as file uploads
+   * now go through the Node.js backend with Tesseract.js
    */
   uploadFile: async (userId: string, file: File) => {
     if (USE_MOCK_DATA) {
