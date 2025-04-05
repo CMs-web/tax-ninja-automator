@@ -45,7 +45,7 @@ export const invoiceService = {
     
     try {
       const { data, error } = await supabase
-        .from('invoices')
+        .from('invoices' as any)
         .select('*')
         .eq('user_id', userId)
         .order('created_at', { ascending: false });
@@ -71,7 +71,7 @@ export const invoiceService = {
     
     try {
       const { data, error } = await supabase
-        .from('invoices')
+        .from('invoices' as any)
         .select('*')
         .eq('user_id', userId)
         .eq('type', type)
@@ -103,8 +103,8 @@ export const invoiceService = {
 
     try {
       const { data, error } = await supabase
-        .from('invoices')
-        .insert([invoice])
+        .from('invoices' as any)
+        .insert([invoice as any])
         .select()
         .single();
       
@@ -136,8 +136,8 @@ export const invoiceService = {
 
     try {
       const { data, error } = await supabase
-        .from('invoices')
-        .update(invoiceData)
+        .from('invoices' as any)
+        .update(invoiceData as any)
         .eq('id', invoiceId)
         .select()
         .single();
@@ -166,7 +166,7 @@ export const invoiceService = {
 
     try {
       const { error } = await supabase
-        .from('invoices')
+        .from('invoices' as any)
         .delete()
         .eq('id', invoiceId)
         .eq('user_id', userId);
