@@ -7,7 +7,7 @@ import {
   TableHeader, TableRow
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { FileText, Download, Trash2 } from "lucide-react";
+import { FileText, Download, Trash2, AlertCircle } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { invoiceService } from "@/services/invoiceService";
 import { Invoice } from "@/types/service";
@@ -17,38 +17,42 @@ import { format, parseISO } from "date-fns";
 const InvoiceList = () => {
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const { user } = useAuth();
   const { toast } = useToast();
 
-  useEffect(() => {
-    const fetchInvoices = async () => {
-      if (!user) {
-        setInvoices([]);
-        setIsLoading(false);
-        return;
+  const fetchInvoices = async () => {
+    if (!user) {
+      setInvoices([]);
+      setIsLoading(false);
+      return;
+    }
+    
+    setIsLoading(true);
+    setError(null);
+    
+    try {
+      const { data, error } = await invoiceService.getAll(user.id);
+      
+      if (error) {
+        throw error;
       }
       
-      setIsLoading(true);
-      try {
-        const { data, error } = await invoiceService.getAll(user.id);
-        
-        if (error) {
-          throw error;
-        }
-        
-        setInvoices(data || []);
-      } catch (error) {
-        console.error("Error fetching invoices:", error);
-        toast({
-          title: "Failed to load invoices",
-          description: "There was an error loading your invoices. Please try again.",
-          variant: "destructive",
-        });
-      } finally {
-        setIsLoading(false);
-      }
-    };
+      setInvoices(data || []);
+    } catch (error) {
+      console.error("Error fetching invoices:", error);
+      setError("Failed to load invoices. Please try again.");
+      toast({
+        title: "Failed to load invoices",
+        description: "There was an error loading your invoices. Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
+  useEffect(() => {
     fetchInvoices();
     
     // Listen for invoice upload events
@@ -61,7 +65,7 @@ const InvoiceList = () => {
     return () => {
       window.removeEventListener('invoice-uploaded', handleInvoiceUploaded);
     };
-  }, [user, toast]);
+  }, [user]);
 
   const handleDelete = async (invoiceId: string) => {
     if (!user) return;
@@ -94,6 +98,14 @@ const InvoiceList = () => {
     }
   };
 
+  const handleRefresh = () => {
+    fetchInvoices();
+    toast({
+      title: "Refreshing Invoices",
+      description: "Fetching the latest invoices from the database.",
+    });
+  };
+
   const getStatusBadgeVariant = (status: string) => {
     switch(status) {
       case 'processed': return "success";
@@ -123,11 +135,27 @@ const InvoiceList = () => {
     <Card>
       <CardHeader className="flex flex-row items-center justify-between">
         <CardTitle>Recent Invoices</CardTitle>
+        <Button 
+          variant="outline" 
+          onClick={handleRefresh} 
+          disabled={isLoading}
+        >
+          Refresh
+        </Button>
       </CardHeader>
       <CardContent>
         {isLoading ? (
           <div className="flex justify-center p-4">
             <p>Loading invoices...</p>
+          </div>
+        ) : error ? (
+          <div className="flex flex-col items-center justify-center p-8 text-center">
+            <AlertCircle className="h-12 w-12 text-red-500 mb-4" />
+            <h3 className="text-lg font-medium mb-1">Error Loading Invoices</h3>
+            <p className="text-sm text-gray-500">{error}</p>
+            <Button onClick={handleRefresh} className="mt-4">
+              Try Again
+            </Button>
           </div>
         ) : invoices.length > 0 ? (
           <Table>

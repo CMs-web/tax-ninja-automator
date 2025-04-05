@@ -1,11 +1,10 @@
-
 import { supabase } from "@/integrations/supabase/client";
-import { Invoice, mockServices } from "@/types/service";
+import { Invoice } from "@/types/service";
 
-// Define a custom TypeSafe client for the invoices table
-const invoicesTable = () => supabase.from('invoices');
+// Set this to false to use the real Supabase backend
+const USE_MOCK_DATA = false;
 
-// Mock data for development
+// Mock data for development only
 const mockInvoices: Invoice[] = [
   {
     id: '1',
@@ -42,20 +41,16 @@ export const invoiceService = {
    * Get all invoices for a user
    */
   getAll: async (userId: string) => {
-    if (mockServices.enableMocks) {
+    if (USE_MOCK_DATA) {
       return { data: mockInvoices.filter(inv => inv.user_id === userId) };
     }
     
     try {
-      // Using TypeScript generics to tell Supabase what type to expect
       const { data, error } = await supabase
         .from('invoices')
         .select('*')
         .eq('user_id', userId)
-        .order('created_at', { ascending: false }) as unknown as { 
-          data: Invoice[] | null, 
-          error: Error | null 
-        };
+        .order('created_at', { ascending: false }) as any;
       
       if (error) throw error;
       
@@ -70,7 +65,7 @@ export const invoiceService = {
    * Get invoices by type (sales or purchase)
    */
   getByType: async (userId: string, type: 'sales' | 'purchase') => {
-    if (mockServices.enableMocks) {
+    if (USE_MOCK_DATA) {
       return { 
         data: mockInvoices.filter(inv => inv.user_id === userId && inv.type === type) 
       };
@@ -82,10 +77,7 @@ export const invoiceService = {
         .select('*')
         .eq('user_id', userId)
         .eq('type', type)
-        .order('created_at', { ascending: false }) as unknown as { 
-          data: Invoice[] | null, 
-          error: Error | null 
-        };
+        .order('created_at', { ascending: false }) as any;
       
       if (error) throw error;
       
@@ -100,7 +92,7 @@ export const invoiceService = {
    * Create a new invoice
    */
   create: async (invoice: Omit<Invoice, 'id' | 'created_at' | 'updated_at'>) => {
-    if (mockServices.enableMocks) {
+    if (USE_MOCK_DATA) {
       const newInvoice = {
         ...invoice,
         id: `mock-${Date.now()}`,
@@ -116,10 +108,7 @@ export const invoiceService = {
         .from('invoices')
         .insert([invoice])
         .select()
-        .single() as unknown as { 
-          data: Invoice | null, 
-          error: Error | null 
-        };
+        .single() as any;
       
       if (error) throw error;
       
@@ -134,7 +123,7 @@ export const invoiceService = {
    * Update an existing invoice
    */
   update: async (invoiceId: string, invoiceData: Partial<Invoice>) => {
-    if (mockServices.enableMocks) {
+    if (USE_MOCK_DATA) {
       const index = mockInvoices.findIndex(inv => inv.id === invoiceId);
       if (index !== -1) {
         mockInvoices[index] = {
@@ -153,10 +142,7 @@ export const invoiceService = {
         .update(invoiceData)
         .eq('id', invoiceId)
         .select()
-        .single() as unknown as { 
-          data: Invoice | null, 
-          error: Error | null 
-        };
+        .single() as any;
       
       if (error) throw error;
       
@@ -171,7 +157,7 @@ export const invoiceService = {
    * Delete an invoice
    */
   delete: async (userId: string, invoiceId: string) => {
-    if (mockServices.enableMocks) {
+    if (USE_MOCK_DATA) {
       const index = mockInvoices.findIndex(inv => inv.id === invoiceId && inv.user_id === userId);
       if (index !== -1) {
         mockInvoices.splice(index, 1);
@@ -185,9 +171,7 @@ export const invoiceService = {
         .from('invoices')
         .delete()
         .eq('id', invoiceId)
-        .eq('user_id', userId) as unknown as { 
-          error: Error | null 
-        };
+        .eq('user_id', userId) as any;
       
       if (error) throw error;
       
@@ -202,7 +186,7 @@ export const invoiceService = {
    * Upload an invoice file to Supabase Storage
    */
   uploadFile: async (userId: string, file: File) => {
-    if (mockServices.enableMocks) {
+    if (USE_MOCK_DATA) {
       // Mock file upload with a delay
       await new Promise(resolve => setTimeout(resolve, 500));
       return { 
@@ -212,7 +196,7 @@ export const invoiceService = {
     }
 
     try {
-      // Use userId as the folder name as suggested
+      // Use userId as the folder name for organization
       const filePath = `${userId}/${file.name}`;
       
       // Upload the file to the invoices bucket

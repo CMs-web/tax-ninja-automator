@@ -11,6 +11,20 @@ import { Upload } from "lucide-react";
 import { invoiceService } from "@/services/invoiceService";
 import { format } from "date-fns";
 
+// Simple function to extract invoice details from filename
+// In a real app, this would be replaced with OCR processing
+const extractInvoiceDetails = (fileName: string) => {
+  // Remove file extension
+  const nameWithoutExtension = fileName.split('.')[0];
+  
+  // Generate random but realistic invoice data
+  return {
+    vendor: nameWithoutExtension.replace(/_/g, ' '),
+    amount: Math.floor(Math.random() * 10000) + 1000,
+    gstAmount: Math.floor(Math.random() * 1800) + 200
+  };
+};
+
 const InvoiceUploader = () => {
   const [file, setFile] = useState<File | null>(null);
   const [invoiceType, setInvoiceType] = useState<'sales' | 'purchase'>('sales');
@@ -57,6 +71,9 @@ const InvoiceUploader = () => {
         throw new Error("Failed to get file URL after upload");
       }
       
+      // Get invoice details (would be replaced with OCR in production)
+      const details = extractInvoiceDetails(file.name);
+      
       // Generate an invoice number based on timestamp and random number
       const invoiceNumber = `INV-${Date.now().toString().slice(-6)}-${Math.floor(Math.random() * 1000)}`;
       
@@ -65,11 +82,11 @@ const InvoiceUploader = () => {
         user_id: user.id,
         invoice_number: invoiceNumber,
         invoice_date: format(new Date(), 'yyyy-MM-dd'),
-        vendor: fileName ? fileName.split('.')[0] : 'Unknown vendor', // Using filename as placeholder vendor
-        amount: Math.floor(Math.random() * 10000) + 1000, // This would be extracted from the invoice in production
-        gst_amount: Math.floor(Math.random() * 1000) + 100, // This would be extracted from the invoice in production
+        vendor: details.vendor,
+        amount: details.amount,
+        gst_amount: details.gstAmount,
         type: invoiceType,
-        status: 'pending' as const, // TypeScript needs this as const assertion
+        status: 'pending' as const,
         file_url: fileUrl
       };
       
@@ -82,7 +99,7 @@ const InvoiceUploader = () => {
         description: `Your ${invoiceType} invoice has been uploaded successfully.`,
       });
       
-      // Dispatch custom event to notify other components (like InvoiceList) to refresh
+      // Dispatch custom event to notify other components to refresh
       const event = new CustomEvent('invoice-uploaded');
       window.dispatchEvent(event);
       
