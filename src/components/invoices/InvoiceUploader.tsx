@@ -50,7 +50,7 @@ const InvoiceUploader = () => {
     try {
       // Create form data for the multipart/form-data request
       const formData = new FormData();
-      formData.append('file', file);
+      formData.append('files', file); // Changed from 'file' to 'files' to match unified API endpoint
       formData.append('userId', user.id);
       formData.append('invoiceType', invoiceType);
       
@@ -58,15 +58,13 @@ const InvoiceUploader = () => {
       const response = await fetch(`${API_BASE_URL}/invoices/upload`, {
         method: 'POST',
         body: formData,
-        // No Content-Type header needed as it's set automatically for FormData
       });
       
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'Failed to upload invoice');
-      }
-      
       const result = await response.json();
+      
+      if (!response.ok || !result.success) {
+        throw new Error(result.error || result.details || 'Failed to upload invoice');
+      }
       
       toast({
         title: "Upload Successful",
@@ -81,6 +79,7 @@ const InvoiceUploader = () => {
       setFile(null);
       const fileInput = document.getElementById('invoice-file') as HTMLInputElement;
       if (fileInput) fileInput.value = '';
+      
     } catch (error) {
       console.error("Error uploading invoice:", error);
       toast({

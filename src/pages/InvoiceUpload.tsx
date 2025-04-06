@@ -74,26 +74,26 @@ const InvoiceUpload = () => {
         });
       }, 300);
       
-      // Upload all files in batch
-      const response = await fetch(`${API_BASE_URL}/invoices/batch-upload`, {
+      // Upload all files using unified API endpoint
+      const response = await fetch(`${API_BASE_URL}/invoices/upload`, {
         method: 'POST',
         body: formData,
       });
       
       clearInterval(simulateProgress);
       
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'Failed to upload invoices');
+      const result = await response.json();
+      
+      if (!response.ok || !result.success) {
+        throw new Error(result.error || result.details || 'Failed to upload invoices');
       }
       
-      const result = await response.json();
       setProgress(100);
       setUploadStatus('success');
       
       toast({
         title: "Upload Successful",
-        description: `${files.length} ${files.length === 1 ? 'invoice has' : 'invoices have'} been queued for processing.`,
+        description: `${result.processed?.length || 0} ${result.processed?.length === 1 ? 'invoice has' : 'invoices have'} been queued for processing.`,
       });
 
       // Reset form after short delay
