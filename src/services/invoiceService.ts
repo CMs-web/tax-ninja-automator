@@ -1,4 +1,3 @@
-
 import { supabase } from "@/integrations/supabase/client";
 import { Invoice } from "@/types/service";
 import { SupabaseTablesType } from "@/types/supabase";
@@ -141,7 +140,7 @@ export const invoiceService = {
     try {
       const { data, error } = await supabase
         .from('invoices')
-        .insert([invoice])
+        .insert(invoice)
         .select() as { data: SupabaseTablesType['invoices'][] | null, error: any };
       
       if (error) throw error;
@@ -149,6 +148,37 @@ export const invoiceService = {
       return { data: data?.[0] };
     } catch (error) {
       console.error('Error creating invoice:', error);
+      return { error };
+    }
+  },
+
+  /**
+   * Create multiple invoices at once
+   */
+  createBatch: async (invoices: Omit<Invoice, 'id' | 'created_at' | 'updated_at'>[]) => {
+    if (USE_MOCK_DATA) {
+      const newInvoices = invoices.map(invoice => ({
+        ...invoice,
+        id: `mock-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
+      }));
+      
+      mockInvoices.push(...newInvoices);
+      return { data: newInvoices };
+    }
+
+    try {
+      const { data, error } = await supabase
+        .from('invoices')
+        .insert(invoices)
+        .select() as { data: SupabaseTablesType['invoices'][] | null, error: any };
+      
+      if (error) throw error;
+      
+      return { data: data || [] };
+    } catch (error) {
+      console.error('Error batch creating invoices:', error);
       return { error };
     }
   },

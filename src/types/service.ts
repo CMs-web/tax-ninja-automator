@@ -1,4 +1,3 @@
-
 export interface Invoice {
   id: string;
   user_id: string;
@@ -14,7 +13,7 @@ export interface Invoice {
   reconciliation_status?: 'matched' | 'unmatched' | 'pending';
   ocr_data?: any;
   confidence_score?: number;
-  file_url?: string;
+  file_url: string; // Changed from optional to required to match Supabase schema
   created_at: string;
   updated_at: string;
 }
