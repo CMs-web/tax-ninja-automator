@@ -50,7 +50,7 @@ const InvoiceUploader = () => {
     try {
       // Create form data for the multipart/form-data request
       const formData = new FormData();
-      formData.append('files', file); // Changed from 'file' to 'files' to match unified API endpoint
+      formData.append('files', file);
       formData.append('userId', user.id);
       formData.append('invoiceType', invoiceType);
       
