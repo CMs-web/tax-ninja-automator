@@ -48,22 +48,26 @@ async function extractInvoiceDataFromBuffer(buffer, mimeType) {
   
   console.log('Extracted text:', text);
   
-  // Simple extraction logic (can be improved based on your invoice format)
-  const invoiceNumberPattern = /invoice[:\s]*#?\s*([A-Za-z0-9\-]+)/i;
+  // Enhanced extraction logic for improved invoice data extraction
+  const invoiceNumberPattern = /invoice[:\s]*#?\s*([A-Za-z0-9\-\/]+)/i;
   const datePattern = /date[:\s]*([0-9]{1,2}[\/\-][0-9]{1,2}[\/\-][0-9]{2,4})/i;
   const amountPattern = /(?:total|amount|sum)[:\s]*(?:Rs\.?|₹|INR)?\s*([0-9,]+\.[0-9]{2})/i;
   const gstPattern = /(?:gst|cgst|sgst|igst)[:\s]*(?:Rs\.?|₹|INR)?\s*([0-9,]+\.[0-9]{2})/i;
-  const vendorPattern = /(?:vendor|from|seller|company)[:\s]*([A-Za-z0-9\s]+)(?:Ltd\.?|Inc\.?|Pvt\.?)?/i;
+  const gstRatePattern = /(?:gst|tax)[:\s]*(?:rate|percentage)[:\s]*([0-9]{1,2})%/i;
+  const vendorNamePattern = /(?:vendor|from|seller|company)[:\s]*([A-Za-z0-9\s]+)(?:Ltd\.?|Inc\.?|Pvt\.?)?/i;
+  const vendorGstinPattern = /(?:gstin|gst\s+no)[:\s]*([0-9A-Z]{15})/i;
   
   // Extract data using regex patterns
   const invoiceNumber = text.match(invoiceNumberPattern)?.[1] || `INV-${Date.now().toString().slice(-6)}`;
   const dateMatch = text.match(datePattern)?.[1];
   let invoiceDate = dateMatch ? new Date(dateMatch).toISOString().split('T')[0] : new Date().toISOString().split('T')[0];
-  const vendor = text.match(vendorPattern)?.[1]?.trim() || "Unknown Vendor";
+  const vendorName = text.match(vendorNamePattern)?.[1]?.trim() || "Unknown Vendor";
+  const vendorGstin = text.match(vendorGstinPattern)?.[1] || null;
   
-  // Parse amount and GST, removing commas and converting to numbers
+  // Parse amount, GST rate and GST amount, removing commas and converting to numbers
   let amount = 0;
   let gstAmount = 0;
+  let gstRate = null;
   
   const amountMatch = text.match(amountPattern)?.[1];
   if (amountMatch) {
@@ -78,12 +82,45 @@ async function extractInvoiceDataFromBuffer(buffer, mimeType) {
     gstAmount = amount * 0.18;
   }
   
+  const gstRateMatch = text.match(gstRatePattern)?.[1];
+  if (gstRateMatch) {
+    gstRate = parseFloat(gstRateMatch);
+  } else if (amount > 0 && gstAmount > 0) {
+    // Estimate GST rate based on the ratio of GST amount to base amount
+    gstRate = Math.round((gstAmount / (amount - gstAmount)) * 100);
+  }
+  
+  // Calculate confidence score based on how many fields were extracted
+  const extractedFields = [
+    invoiceNumber !== `INV-${Date.now().toString().slice(-6)}`, // Not default
+    dateMatch !== null,
+    vendorName !== "Unknown Vendor", // Not default
+    vendorGstin !== null,
+    amountMatch !== null,
+    gstMatch !== null,
+    gstRateMatch !== null
+  ];
+  
+  const confidenceScore = (extractedFields.filter(Boolean).length / extractedFields.length) * 100;
+  
+  // Create OCR data object to store all extracted information
+  const ocrData = {
+    raw_text: text,
+    extraction_time: new Date().toISOString(),
+    identified_fields: extractedFields.filter(Boolean).length,
+    total_possible_fields: extractedFields.length
+  };
+  
   return {
     invoice_number: invoiceNumber,
     invoice_date: invoiceDate,
-    vendor: vendor,
+    vendor_name: vendorName,
+    vendor_gstin: vendorGstin,
     amount: amount,
-    gst_amount: gstAmount
+    gst_amount: gstAmount,
+    gst_rate: gstRate,
+    confidence_score: confidenceScore,
+    ocr_data: ocrData
   };
 }
 
@@ -138,11 +175,16 @@ app.post('/api/invoices/upload', upload.single('file'), async (req, res) => {
       user_id: userId,
       invoice_number: extractedData.invoice_number,
       invoice_date: extractedData.invoice_date,
-      vendor: extractedData.vendor,
+      vendor_name: extractedData.vendor_name,
+      vendor_gstin: extractedData.vendor_gstin,
       amount: extractedData.amount,
       gst_amount: extractedData.gst_amount,
+      gst_rate: extractedData.gst_rate,
       type: invoiceType,
-      status: 'pending',
+      processing_status: 'pending',
+      reconciliation_status: 'pending',
+      confidence_score: extractedData.confidence_score,
+      ocr_data: extractedData.ocr_data,
       file_url: publicUrl
     };
     

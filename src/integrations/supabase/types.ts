@@ -12,45 +12,60 @@ export type Database = {
       invoices: {
         Row: {
           amount: number
+          confidence_score: number | null
           created_at: string
-          file_url: string | null
+          file_url: string
           gst_amount: number
+          gst_rate: number | null
           id: string
           invoice_date: string
           invoice_number: string
-          status: string
+          ocr_data: Json | null
+          processing_status: string | null
+          reconciliation_status: string | null
           type: string
           updated_at: string
           user_id: string
-          vendor: string
+          vendor_gstin: string | null
+          vendor_name: string
         }
         Insert: {
           amount: number
+          confidence_score?: number | null
           created_at?: string
-          file_url?: string | null
+          file_url: string
           gst_amount: number
+          gst_rate?: number | null
           id?: string
           invoice_date: string
           invoice_number: string
-          status?: string
-          type: string
+          ocr_data?: Json | null
+          processing_status?: string | null
+          reconciliation_status?: string | null
+          type?: string
           updated_at?: string
           user_id: string
-          vendor: string
+          vendor_gstin?: string | null
+          vendor_name: string
         }
         Update: {
           amount?: number
+          confidence_score?: number | null
           created_at?: string
-          file_url?: string | null
+          file_url?: string
           gst_amount?: number
+          gst_rate?: number | null
           id?: string
           invoice_date?: string
           invoice_number?: string
-          status?: string
+          ocr_data?: Json | null
+          processing_status?: string | null
+          reconciliation_status?: string | null
           type?: string
           updated_at?: string
           user_id?: string
-          vendor?: string
+          vendor_gstin?: string | null
+          vendor_name?: string
         }
         Relationships: []
       }

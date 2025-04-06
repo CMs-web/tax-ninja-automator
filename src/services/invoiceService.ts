@@ -13,11 +13,15 @@ const mockInvoices: Invoice[] = [
     user_id: '123',
     invoice_number: 'INV-001',
     invoice_date: '2025-03-15',
-    vendor: 'ABC Corp',
+    vendor_name: 'ABC Corp',
+    vendor_gstin: '29ABCDE1234F1Z5',
     amount: 10000,
     gst_amount: 1800,
+    gst_rate: 18,
     type: 'sales',
-    status: 'processed',
+    processing_status: 'processed',
+    reconciliation_status: 'matched',
+    confidence_score: 85.5,
     file_url: 'https://example.com/invoice1.pdf',
     created_at: '2025-03-15T10:00:00Z',
     updated_at: '2025-03-15T10:00:00Z'
@@ -27,11 +31,14 @@ const mockInvoices: Invoice[] = [
     user_id: '123',
     invoice_number: 'INV-002',
     invoice_date: '2025-03-10',
-    vendor: 'XYZ Ltd',
+    vendor_name: 'XYZ Ltd',
     amount: 5000,
     gst_amount: 900,
+    gst_rate: 18,
     type: 'purchase',
-    status: 'pending',
+    processing_status: 'pending',
+    reconciliation_status: 'pending',
+    confidence_score: 65.2,
     file_url: 'https://example.com/invoice2.pdf',
     created_at: '2025-03-10T10:00:00Z',
     updated_at: '2025-03-10T10:00:00Z'
@@ -87,6 +94,32 @@ export const invoiceService = {
     } catch (error) {
       console.error(`Error fetching ${type} invoices:`, error);
       return { data: [], error };
+    }
+  },
+
+  /**
+   * Get invoice by ID
+   */
+  getById: async (userId: string, invoiceId: string) => {
+    if (USE_MOCK_DATA) {
+      const invoice = mockInvoices.find(inv => inv.id === invoiceId && inv.user_id === userId);
+      return { data: invoice };
+    }
+    
+    try {
+      const { data, error } = await supabase
+        .from('invoices')
+        .select('*')
+        .eq('id', invoiceId)
+        .eq('user_id', userId)
+        .maybeSingle() as { data: SupabaseTablesType['invoices'] | null, error: any };
+      
+      if (error) throw error;
+      
+      return { data };
+    } catch (error) {
+      console.error('Error fetching invoice:', error);
+      return { error };
     }
   },
 

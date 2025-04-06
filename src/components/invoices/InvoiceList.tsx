@@ -7,12 +7,13 @@ import {
   TableHeader, TableRow
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { FileText, Download, Trash2, AlertCircle } from "lucide-react";
+import { FileText, Download, Trash2, AlertCircle, InfoCircle } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { invoiceService } from "@/services/invoiceService";
 import { Invoice } from "@/types/service";
 import { useAuth } from "@/hooks/useAuth";
 import { format, parseISO } from "date-fns";
+import { Tooltip } from "@/components/ui/tooltip";
 
 const InvoiceList = () => {
   const [invoices, setInvoices] = useState<Invoice[]>([]);
@@ -108,8 +109,11 @@ const InvoiceList = () => {
 
   const getStatusBadgeVariant = (status: string) => {
     switch(status) {
-      case 'processed': return "success";
-      case 'error': return "destructive";
+      case 'processed': 
+      case 'reviewed': 
+      case 'matched': return "success";
+      case 'failed': 
+      case 'unmatched': return "destructive";
       case 'pending': 
       default: return "outline";
     }
@@ -129,6 +133,23 @@ const InvoiceList = () => {
     } catch (error) {
       return dateString;
     }
+  };
+
+  const getConfidenceIndicator = (score: number | undefined) => {
+    if (!score) return null;
+    
+    let color = "text-red-500";
+    if (score >= 80) {
+      color = "text-emerald-500";
+    } else if (score >= 50) {
+      color = "text-amber-500";
+    }
+    
+    return (
+      <span className={`inline-flex items-center ${color}`} title={`OCR Confidence: ${score.toFixed(0)}%`}>
+        <span className="ml-1 text-xs">{score.toFixed(0)}%</span>
+      </span>
+    );
   };
 
   return (
@@ -158,63 +179,76 @@ const InvoiceList = () => {
             </Button>
           </div>
         ) : invoices.length > 0 ? (
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead className="w-[100px]">Type</TableHead>
-                <TableHead>Number</TableHead>
-                <TableHead>Date</TableHead>
-                <TableHead>Vendor/Customer</TableHead>
-                <TableHead>Amount</TableHead>
-                <TableHead>GST</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead className="text-right">Actions</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {invoices.map((invoice) => (
-                <TableRow key={invoice.id}>
-                  <TableCell>
-                    <Badge variant={invoice.type === 'sales' ? 'default' : 'secondary'}>
-                      {invoice.type === 'sales' ? 'Sales' : 'Purchase'}
-                    </Badge>
-                  </TableCell>
-                  <TableCell className="font-medium">{invoice.invoice_number}</TableCell>
-                  <TableCell>{formatDate(invoice.invoice_date)}</TableCell>
-                  <TableCell>{invoice.vendor}</TableCell>
-                  <TableCell>{formatCurrency(invoice.amount)}</TableCell>
-                  <TableCell>{formatCurrency(invoice.gst_amount)}</TableCell>
-                  <TableCell>
-                    <Badge variant={getStatusBadgeVariant(invoice.status)}>
-                      {invoice.status.charAt(0).toUpperCase() + invoice.status.slice(1)}
-                    </Badge>
-                  </TableCell>
-                  <TableCell className="text-right space-x-2">
-                    <Button size="icon" variant="ghost" asChild>
-                      <a href={invoice.file_url} target="_blank" rel="noopener noreferrer">
-                        <FileText className="h-4 w-4" />
-                        <span className="sr-only">View</span>
-                      </a>
-                    </Button>
-                    <Button size="icon" variant="ghost" asChild>
-                      <a href={invoice.file_url} download>
-                        <Download className="h-4 w-4" />
-                        <span className="sr-only">Download</span>
-                      </a>
-                    </Button>
-                    <Button 
-                      size="icon" 
-                      variant="ghost" 
-                      onClick={() => handleDelete(invoice.id)}
-                    >
-                      <Trash2 className="h-4 w-4" />
-                      <span className="sr-only">Delete</span>
-                    </Button>
-                  </TableCell>
+          <div className="overflow-x-auto">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead className="w-[80px]">Type</TableHead>
+                  <TableHead>Number</TableHead>
+                  <TableHead>Date</TableHead>
+                  <TableHead>Vendor/Customer</TableHead>
+                  <TableHead>GSTIN</TableHead>
+                  <TableHead>Amount</TableHead>
+                  <TableHead>GST</TableHead>
+                  <TableHead>Rate</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead className="text-right">Actions</TableHead>
                 </TableRow>
-              ))}
-            </TableBody>
-          </Table>
+              </TableHeader>
+              <TableBody>
+                {invoices.map((invoice) => (
+                  <TableRow key={invoice.id}>
+                    <TableCell>
+                      <Badge variant={invoice.type === 'sales' ? 'default' : 'secondary'}>
+                        {invoice.type === 'sales' ? 'Sales' : invoice.type === 'purchase' ? 'Purchase' : 'Unknown'}
+                      </Badge>
+                    </TableCell>
+                    <TableCell className="font-medium">
+                      {invoice.invoice_number}
+                      {getConfidenceIndicator(invoice.confidence_score)}
+                    </TableCell>
+                    <TableCell>{formatDate(invoice.invoice_date)}</TableCell>
+                    <TableCell>{invoice.vendor_name}</TableCell>
+                    <TableCell>
+                      <span className="text-xs font-mono">
+                        {invoice.vendor_gstin || '-'}
+                      </span>
+                    </TableCell>
+                    <TableCell>{formatCurrency(invoice.amount)}</TableCell>
+                    <TableCell>{formatCurrency(invoice.gst_amount)}</TableCell>
+                    <TableCell>{invoice.gst_rate ? `${invoice.gst_rate}%` : '-'}</TableCell>
+                    <TableCell>
+                      <Badge variant={getStatusBadgeVariant(invoice.processing_status)}>
+                        {invoice.processing_status.charAt(0).toUpperCase() + invoice.processing_status.slice(1)}
+                      </Badge>
+                    </TableCell>
+                    <TableCell className="text-right space-x-2">
+                      <Button size="icon" variant="ghost" asChild>
+                        <a href={invoice.file_url} target="_blank" rel="noopener noreferrer">
+                          <FileText className="h-4 w-4" />
+                          <span className="sr-only">View</span>
+                        </a>
+                      </Button>
+                      <Button size="icon" variant="ghost" asChild>
+                        <a href={invoice.file_url} download>
+                          <Download className="h-4 w-4" />
+                          <span className="sr-only">Download</span>
+                        </a>
+                      </Button>
+                      <Button 
+                        size="icon" 
+                        variant="ghost" 
+                        onClick={() => handleDelete(invoice.id)}
+                      >
+                        <Trash2 className="h-4 w-4" />
+                        <span className="sr-only">Delete</span>
+                      </Button>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
         ) : (
           <div className="flex flex-col items-center justify-center p-8 text-center">
             <FileText className="h-12 w-12 text-gray-400 mb-4" />
