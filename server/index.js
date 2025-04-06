@@ -124,7 +124,7 @@ async function extractInvoiceDataFromBuffer(buffer, mimeType) {
   };
 }
 
-// Upload invoice file and extract data
+// Single invoice upload endpoint
 app.post('/api/invoices/upload', upload.single('file'), async (req, res) => {
   try {
     if (!req.file) {
@@ -207,6 +207,122 @@ app.post('/api/invoices/upload', upload.single('file'), async (req, res) => {
   } catch (error) {
     console.error('Error processing invoice:', error);
     res.status(500).json({ error: 'Failed to process invoice', details: error.message });
+  }
+});
+
+// Batch invoice upload endpoint
+app.post('/api/invoices/batch-upload', upload.array('files', 10), async (req, res) => {
+  try {
+    if (!req.files || req.files.length === 0) {
+      return res.status(400).json({ error: 'No files uploaded' });
+    }
+
+    const { userId } = req.body;
+    
+    if (!userId) {
+      return res.status(400).json({ error: 'User ID is required' });
+    }
+    
+    console.log(`Processing ${req.files.length} files for user ${userId}...`);
+    
+    // Process each file in the batch
+    const results = [];
+    const errors = [];
+    
+    for (const file of req.files) {
+      try {
+        // Upload file to Supabase Storage
+        const fileExt = file.originalname.substring(file.originalname.lastIndexOf('.'));
+        const fileName = `${userId}/${Date.now()}-${Math.random().toString(36).substring(2, 10)}${fileExt}`;
+        
+        const { data: uploadData, error: uploadError } = await supabase.storage
+          .from('invoices')
+          .upload(fileName, file.buffer, {
+            contentType: file.mimetype,
+            upsert: false
+          });
+        
+        if (uploadError) {
+          errors.push({ file: file.originalname, error: 'Failed to upload to storage' });
+          console.error('Error uploading to Supabase Storage:', uploadError);
+          continue;
+        }
+        
+        // Get the public URL for the uploaded file
+        const { data: { publicUrl } } = supabase.storage
+          .from('invoices')
+          .getPublicUrl(fileName);
+        
+        // Extract invoice data
+        const extractedData = await extractInvoiceDataFromBuffer(file.buffer, file.mimetype);
+        
+        // Determine invoice type based on keywords in text
+        let inferredType = 'unknown';
+        const salesKeywords = ['sales', 'invoice', 'bill to', 'customer', 'sold to'];
+        const purchaseKeywords = ['purchase', 'vendor', 'supplier', 'bill from', 'bought from'];
+        
+        const lowerText = extractedData.ocr_data.raw_text.toLowerCase();
+        
+        if (salesKeywords.some(keyword => lowerText.includes(keyword))) {
+          inferredType = 'sales';
+        } else if (purchaseKeywords.some(keyword => lowerText.includes(keyword))) {
+          inferredType = 'purchase';
+        }
+        
+        // Create invoice record
+        const invoiceData = {
+          user_id: userId,
+          invoice_number: extractedData.invoice_number,
+          invoice_date: extractedData.invoice_date,
+          vendor_name: extractedData.vendor_name,
+          vendor_gstin: extractedData.vendor_gstin,
+          amount: extractedData.amount,
+          gst_amount: extractedData.gst_amount,
+          gst_rate: extractedData.gst_rate,
+          type: inferredType,
+          processing_status: 'pending',
+          reconciliation_status: 'pending',
+          confidence_score: extractedData.confidence_score,
+          ocr_data: extractedData.ocr_data,
+          file_url: publicUrl
+        };
+        
+        const { data: dbData, error: dbError } = await supabase
+          .from('invoices')
+          .insert([invoiceData])
+          .select();
+        
+        if (dbError) {
+          errors.push({ file: file.originalname, error: 'Failed to save to database' });
+          console.error('Error storing invoice in database:', dbError);
+          continue;
+        }
+        
+        results.push({
+          filename: file.originalname,
+          invoice_id: dbData[0].id,
+          type: inferredType,
+          confidence_score: extractedData.confidence_score
+        });
+        
+      } catch (fileError) {
+        errors.push({ file: file.originalname, error: fileError.message });
+        console.error(`Error processing file ${file.originalname}:`, fileError);
+      }
+    }
+    
+    res.status(201).json({
+      message: `Processed ${results.length} of ${req.files.length} invoices successfully`,
+      processed: results,
+      errors: errors.length > 0 ? errors : undefined
+    });
+    
+  } catch (error) {
+    console.error('Error processing batch upload:', error);
+    res.status(500).json({ 
+      error: 'Failed to process invoice batch', 
+      details: error.message 
+    });
   }
 });
 

@@ -10,6 +10,8 @@ import Login from "./pages/Login";
 import Register from "./pages/Register";
 import Dashboard from "./pages/Dashboard";
 import Invoices from "./pages/Invoices";
+import InvoiceUpload from "./pages/InvoiceUpload";
+import InvoiceReview from "./pages/InvoiceReview";
 import GstFiling from "./pages/GstFiling";
 import Payments from "./pages/Payments";
 import NotFound from "./pages/NotFound";
@@ -77,6 +79,8 @@ const AppRoutes = () => {
       <Route path="/register" element={<AuthRoute><Register /></AuthRoute>} />
       <Route path="/dashboard" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
       <Route path="/invoices" element={<ProtectedRoute><Invoices /></ProtectedRoute>} />
+      <Route path="/invoices/upload" element={<ProtectedRoute><InvoiceUpload /></ProtectedRoute>} />
+      <Route path="/invoices/review" element={<ProtectedRoute><InvoiceReview /></ProtectedRoute>} />
       <Route path="/gst-filing" element={<ProtectedRoute><GstFiling /></ProtectedRoute>} />
       <Route path="/payments" element={<ProtectedRoute><Payments /></ProtectedRoute>} />
       <Route path="*" element={<NotFound />} />

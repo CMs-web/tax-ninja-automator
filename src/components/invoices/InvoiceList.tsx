@@ -7,16 +7,26 @@ import {
   TableHeader, TableRow
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { FileText, Download, Trash2, AlertCircle, InfoCircle } from "lucide-react";
+import { FileText, Download, Trash2, AlertCircle, Info } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { invoiceService } from "@/services/invoiceService";
 import { Invoice } from "@/types/service";
 import { useAuth } from "@/hooks/useAuth";
 import { format, parseISO } from "date-fns";
-import { Tooltip } from "@/components/ui/tooltip";
 
-const InvoiceList = () => {
+interface InvoiceListProps {
+  filters?: {
+    type: string;
+    processingStatus: string;
+    reconciliationStatus: string;
+  };
+}
+
+const InvoiceList: React.FC<InvoiceListProps> = ({ 
+  filters = { type: 'all', processingStatus: 'all', reconciliationStatus: 'all' } 
+}) => {
   const [invoices, setInvoices] = useState<Invoice[]>([]);
+  const [filteredInvoices, setFilteredInvoices] = useState<Invoice[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const { user } = useAuth();
@@ -52,6 +62,32 @@ const InvoiceList = () => {
       setIsLoading(false);
     }
   };
+
+  // Apply filters whenever invoices or filters change
+  useEffect(() => {
+    const applyFilters = () => {
+      let result = [...invoices];
+      
+      // Apply type filter
+      if (filters.type !== 'all') {
+        result = result.filter(invoice => invoice.type === filters.type);
+      }
+      
+      // Apply processing status filter
+      if (filters.processingStatus !== 'all') {
+        result = result.filter(invoice => invoice.processing_status === filters.processingStatus);
+      }
+      
+      // Apply reconciliation status filter
+      if (filters.reconciliationStatus !== 'all') {
+        result = result.filter(invoice => invoice.reconciliation_status === filters.reconciliationStatus);
+      }
+      
+      setFilteredInvoices(result);
+    };
+    
+    applyFilters();
+  }, [invoices, filters]);
 
   useEffect(() => {
     fetchInvoices();
@@ -155,7 +191,14 @@ const InvoiceList = () => {
   return (
     <Card>
       <CardHeader className="flex flex-row items-center justify-between">
-        <CardTitle>Recent Invoices</CardTitle>
+        <CardTitle>
+          Invoices
+          {filteredInvoices.length !== invoices.length && (
+            <span className="ml-2 text-sm font-normal text-gray-500">
+              (Showing {filteredInvoices.length} of {invoices.length})
+            </span>
+          )}
+        </CardTitle>
         <Button 
           variant="outline" 
           onClick={handleRefresh} 
@@ -178,7 +221,7 @@ const InvoiceList = () => {
               Try Again
             </Button>
           </div>
-        ) : invoices.length > 0 ? (
+        ) : filteredInvoices.length > 0 ? (
           <div className="overflow-x-auto">
             <Table>
               <TableHeader>
@@ -192,14 +235,15 @@ const InvoiceList = () => {
                   <TableHead>GST</TableHead>
                   <TableHead>Rate</TableHead>
                   <TableHead>Status</TableHead>
+                  <TableHead>Reconciliation</TableHead>
                   <TableHead className="text-right">Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {invoices.map((invoice) => (
+                {filteredInvoices.map((invoice) => (
                   <TableRow key={invoice.id}>
                     <TableCell>
-                      <Badge variant={invoice.type === 'sales' ? 'default' : 'secondary'}>
+                      <Badge variant={invoice.type === 'sales' ? 'default' : invoice.type === 'purchase' ? 'secondary' : 'outline'}>
                         {invoice.type === 'sales' ? 'Sales' : invoice.type === 'purchase' ? 'Purchase' : 'Unknown'}
                       </Badge>
                     </TableCell>
@@ -220,6 +264,11 @@ const InvoiceList = () => {
                     <TableCell>
                       <Badge variant={getStatusBadgeVariant(invoice.processing_status)}>
                         {invoice.processing_status.charAt(0).toUpperCase() + invoice.processing_status.slice(1)}
+                      </Badge>
+                    </TableCell>
+                    <TableCell>
+                      <Badge variant={getStatusBadgeVariant(invoice.reconciliation_status || 'pending')}>
+                        {(invoice.reconciliation_status || 'pending').charAt(0).toUpperCase() + (invoice.reconciliation_status || 'pending').slice(1)}
                       </Badge>
                     </TableCell>
                     <TableCell className="text-right space-x-2">
@@ -254,8 +303,9 @@ const InvoiceList = () => {
             <FileText className="h-12 w-12 text-gray-400 mb-4" />
             <h3 className="text-lg font-medium mb-1">No Invoices Found</h3>
             <p className="text-sm text-gray-500">
-              You haven't uploaded any invoices yet. <br />
-              Start by uploading your first invoice.
+              {invoices.length > 0 
+                ? "No invoices match your current filters. Try changing the filter criteria."
+                : "You haven't uploaded any invoices yet. Start by uploading your first invoice."}
             </p>
           </div>
         )}

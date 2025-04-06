@@ -12,7 +12,7 @@ export type InvoiceDB = {
   gst_rate?: number;
   type: 'sales' | 'purchase' | 'unknown';
   processing_status: 'pending' | 'processed' | 'failed' | 'reviewed';
-  reconciliation_status: 'matched' | 'unmatched' | 'pending';
+  reconciliation_status?: 'matched' | 'unmatched' | 'pending';
   ocr_data?: any;
   confidence_score?: number;
   file_url: string;
