@@ -7,59 +7,16 @@ import { Progress } from "@/components/ui/progress";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/useAuth";
-import { Upload, Check, AlertCircle, AlertTriangle, FileWarning } from "lucide-react";
+import { Upload, Check, AlertCircle } from "lucide-react";
 import { useNavigate } from "react-router-dom";
-import { Badge } from "@/components/ui/badge";
-import { ScrollArea } from "@/components/ui/scroll-area";
 
 const API_BASE_URL = "http://localhost:5000/api";
-
-interface ProcessedInvoice {
-  filename: string;
-  invoice_id: string;
-  type: 'sales' | 'purchase' | 'unknown';
-  confidence_score: number;
-  needs_review: boolean;
-  missing_fields?: string[];
-}
-
-interface UploadError {
-  file: string;
-  error: string;
-  details?: string;
-}
-
-interface DuplicateInvoice {
-  file: string;
-  invoice_number: string;
-  existing_invoice_id: string;
-}
-
-interface PotentialDuplicate {
-  file: string;
-  invoice_number: string;
-  similar_invoices: {
-    id: string;
-    invoice_number: string;
-    invoice_date: string;
-    amount: number;
-  }[];
-}
-
-interface UploadResult {
-  processed: ProcessedInvoice[];
-  errors?: UploadError[];
-  duplicates?: DuplicateInvoice[];
-  potentialDuplicates?: PotentialDuplicate[];
-  success: boolean;
-}
 
 const InvoiceUpload = () => {
   const [files, setFiles] = useState<File[]>([]);
   const [uploading, setUploading] = useState(false);
   const [progress, setProgress] = useState(0);
   const [uploadStatus, setUploadStatus] = useState<'idle' | 'uploading' | 'success' | 'error'>('idle');
-  const [results, setResults] = useState<UploadResult | null>(null);
   const { user } = useAuth();
   const { toast } = useToast();
   const navigate = useNavigate();
@@ -96,7 +53,6 @@ const InvoiceUpload = () => {
     setUploading(true);
     setUploadStatus('uploading');
     setProgress(0);
-    setResults(null);
 
     try {
       // Create FormData with all files
@@ -128,54 +84,24 @@ const InvoiceUpload = () => {
       
       const result = await response.json();
       
-      if (!response.ok) {
+      if (!response.ok || !result.success) {
         throw new Error(result.error || result.details || 'Failed to upload invoices');
       }
       
       setProgress(100);
-      setResults(result);
-      setUploadStatus(result.success ? 'success' : 'error');
-      
-      // Determine notification message based on results
-      const processedCount = result.processed?.length || 0;
-      const errorCount = result.errors?.length || 0;
-      const duplicateCount = result.duplicates?.length || 0;
-      const potentialDuplicateCount = result.potentialDuplicates?.length || 0;
-      
-      let toastTitle = "Upload Complete";
-      let toastMessage = `${processedCount} ${processedCount === 1 ? 'invoice' : 'invoices'} processed successfully.`;
-      let toastVariant: "default" | "destructive" | undefined = "default";
-      
-      if (errorCount > 0) {
-        toastTitle = errorCount === files.length ? "Upload Failed" : "Partial Upload Success";
-        toastMessage += ` ${errorCount} ${errorCount === 1 ? 'file' : 'files'} failed.`;
-        toastVariant = errorCount === files.length ? "destructive" : undefined;
-      }
-      
-      if (duplicateCount > 0) {
-        toastMessage += ` ${duplicateCount} ${duplicateCount === 1 ? 'duplicate was' : 'duplicates were'} skipped.`;
-      }
+      setUploadStatus('success');
       
       toast({
-        title: toastTitle,
-        description: toastMessage,
-        variant: toastVariant,
+        title: "Upload Successful",
+        description: `${result.processed?.length || 0} ${result.processed?.length === 1 ? 'invoice has' : 'invoices have'} been queued for processing.`,
       });
 
-      // Dispatch event for other components
-      if (processedCount > 0) {
-        const event = new CustomEvent('invoice-uploaded');
-        window.dispatchEvent(event);
-      }
-
-      // Reset form after short delay if all successful
-      if (errorCount === 0 && duplicateCount === 0) {
-        setTimeout(() => {
-          setFiles([]);
-          const fileInput = document.getElementById('invoice-files') as HTMLInputElement;
-          if (fileInput) fileInput.value = '';
-        }, 2000);
-      }
+      // Reset form after short delay
+      setTimeout(() => {
+        setFiles([]);
+        const fileInput = document.getElementById('invoice-files') as HTMLInputElement;
+        if (fileInput) fileInput.value = '';
+      }, 2000);
 
     } catch (error) {
       setUploadStatus('error');
@@ -192,96 +118,6 @@ const InvoiceUpload = () => {
 
   const navigateToReview = () => {
     navigate('/invoices/review');
-  };
-
-  const getConfidenceBadge = (score: number) => {
-    if (score >= 80) return <Badge className="bg-green-500">High ({score}%)</Badge>;
-    if (score >= 60) return <Badge className="bg-amber-500">Medium ({score}%)</Badge>;
-    return <Badge className="bg-red-500">Low ({score}%)</Badge>;
-  };
-
-  const renderInvoiceResults = () => {
-    if (!results) return null;
-    
-    return (
-      <div className="space-y-4 mt-4">
-        {results.processed && results.processed.length > 0 && (
-          <div>
-            <h3 className="text-sm font-medium mb-2">Successfully Processed ({results.processed.length})</h3>
-            <ScrollArea className="h-48 w-full border rounded-md p-2">
-              <div className="space-y-2">
-                {results.processed.map((item, index) => (
-                  <div key={index} className="flex justify-between items-center py-1 border-b last:border-0">
-                    <div>
-                      <p className="text-sm font-medium">{item.filename}</p>
-                      <div className="flex gap-2 items-center">
-                        <Badge variant={item.type === 'sales' ? 'default' : 'secondary'}>
-                          {item.type}
-                        </Badge>
-                        {getConfidenceBadge(item.confidence_score)}
-                      </div>
-                    </div>
-                    <div className="flex items-center">
-                      {item.needs_review ? (
-                        <Badge variant="outline" className="border-amber-500 text-amber-600">
-                          <AlertTriangle className="h-3 w-3 mr-1" /> Needs Review
-                        </Badge>
-                      ) : (
-                        <Badge variant="outline" className="border-green-500 text-green-600">
-                          <Check className="h-3 w-3 mr-1" /> Ready
-                        </Badge>
-                      )}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </ScrollArea>
-          </div>
-        )}
-
-        {results.duplicates && results.duplicates.length > 0 && (
-          <div>
-            <h3 className="text-sm font-medium mb-2">Duplicates ({results.duplicates.length})</h3>
-            <ScrollArea className="h-32 w-full border rounded-md p-2">
-              <div className="space-y-2">
-                {results.duplicates.map((item, index) => (
-                  <div key={index} className="flex justify-between items-center py-1 border-b last:border-0">
-                    <div>
-                      <p className="text-sm font-medium">{item.file}</p>
-                      <p className="text-xs text-gray-600">Invoice #{item.invoice_number}</p>
-                    </div>
-                    <Badge variant="outline" className="border-amber-500 text-amber-600">
-                      <FileWarning className="h-3 w-3 mr-1" /> Duplicate
-                    </Badge>
-                  </div>
-                ))}
-              </div>
-            </ScrollArea>
-          </div>
-        )}
-        
-        {results.errors && results.errors.length > 0 && (
-          <div>
-            <h3 className="text-sm font-medium mb-2">Errors ({results.errors.length})</h3>
-            <ScrollArea className="h-32 w-full border rounded-md p-2">
-              <div className="space-y-2">
-                {results.errors.map((item, index) => (
-                  <div key={index} className="flex justify-between items-center py-1 border-b last:border-0">
-                    <div>
-                      <p className="text-sm font-medium">{item.file}</p>
-                      <p className="text-xs text-red-500">{item.error}</p>
-                    </div>
-                    <Badge variant="destructive">
-                      <AlertCircle className="h-3 w-3 mr-1" /> Failed
-                    </Badge>
-                  </div>
-                ))}
-              </div>
-            </ScrollArea>
-          </div>
-        )}
-      </div>
-    );
   };
 
   return (
@@ -311,7 +147,6 @@ const InvoiceUpload = () => {
                   accept=".pdf,.jpg,.jpeg,.png,.webp" 
                   onChange={handleFileChange} 
                   className="max-w-xs"
-                  disabled={uploading}
                 />
                 {files.length > 0 && (
                   <div className="mt-4 text-sm">
@@ -342,15 +177,10 @@ const InvoiceUpload = () => {
                   <Check className="h-4 w-4 text-green-600" />
                   <AlertTitle className="text-green-800">Success!</AlertTitle>
                   <AlertDescription className="text-green-700">
-                    Your invoices have been uploaded and processed.
-                    {results?.processed?.some(inv => inv.needs_review) && (
-                      <>
-                        {" "}Some invoices need your review.{" "}
-                        <Button variant="link" className="p-0 h-auto font-semibold text-emerald-700" onClick={navigateToReview}>
-                          Review them now
-                        </Button>.
-                      </>
-                    )}
+                    Your invoices have been uploaded and queued for processing. 
+                    <Button variant="link" className="p-0 h-auto font-semibold text-emerald-700" onClick={navigateToReview}>
+                      Review them later
+                    </Button>.
                   </AlertDescription>
                 </Alert>
               )}
@@ -360,20 +190,17 @@ const InvoiceUpload = () => {
                   <AlertCircle className="h-4 w-4" />
                   <AlertTitle>Error</AlertTitle>
                   <AlertDescription>
-                    There was a problem uploading your invoices. Please check the error details.
+                    There was a problem uploading your invoices. Please try again.
                   </AlertDescription>
                 </Alert>
               )}
 
-              {renderInvoiceResults()}
-
               <div className="text-sm text-gray-500">
                 <h4 className="font-semibold mb-1">What happens next?</h4>
                 <ol className="list-decimal pl-5 space-y-1">
-                  <li>Files are uploaded and processed with OCR</li>
-                  <li>System detects duplicates and extracts invoice data</li>
-                  <li>Low confidence extractions are flagged for manual review</li>
-                  <li>You can review and correct any data in the Invoice Review page</li>
+                  <li>Files are uploaded and queued for processing</li>
+                  <li>Our OCR system extracts invoice data</li>
+                  <li>You'll be able to review extracted data in the Invoice Review page</li>
                 </ol>
               </div>
             </CardContent>
