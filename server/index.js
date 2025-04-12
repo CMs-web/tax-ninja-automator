@@ -1,382 +1,440 @@
-
-require('dotenv').config();
-const express = require('express');
-const cors = require('cors');
-const multer = require('multer');
-const { createClient } = require('@supabase/supabase-js');
-const axios = require('axios');
-const FormData = require('form-data');
+require("dotenv").config();
+const express = require("express");
+const cors = require("cors");
+const multer = require("multer");
+const { createClient } = require("@supabase/supabase-js");
+const axios = require("axios");
+const FormData = require("form-data");
+const { callOllamaForExtraction } = require("./callOllamaForExtraction");
 
 const app = express();
 const PORT = process.env.PORT || 5000;
 
+console.log("starting the server");
+
 // Supabase client setup
 const supabaseUrl = "https://sjqezbfqmwfwbutgzwqd.supabase.co";
-const supabaseKey = process.env.SUPABASE_SERVICE_KEY || '';
+const supabaseKey = process.env.SUPABASE_SERVICE_KEY || "";
 const supabase = createClient(supabaseUrl, supabaseKey);
 
 // OCR Space API Key
-const OCR_SPACE_API_KEY = process.env.OCR_SPACE_API_KEY || '';
+const OCR_SPACE_API_KEY = process.env.OCR_SPACE_API_KEY || "";
 
 // Middleware
-app.use(cors({
-  origin: 'http://localhost:5173', // Vite's default dev server port
-  credentials: true
-}));
+app.use(cors({ origin: "http://localhost:5173", credentials: true }));
 app.use(express.json());
 
-// Configure multer for memory storage (without saving to disk)
+// Configure multer for memory storage
 const memoryStorage = multer.memoryStorage();
 const upload = multer({
   storage: memoryStorage,
   limits: { fileSize: 5 * 1024 * 1024 }, // 5MB limit
   fileFilter: (req, file, cb) => {
-    const allowedTypes = ['application/pdf', 'image/jpeg', 'image/png', 'image/webp'];
+    const allowedTypes = [
+      "application/pdf",
+      "image/jpeg",
+      "image/png",
+      "image/webp",
+    ];
     if (!allowedTypes.includes(file.mimetype)) {
-      return cb(new Error('Only PDF, JPEG, PNG, and WebP files are allowed!'));
+      return cb(new Error("Only PDF, JPEG, PNG, and WebP files are allowed!"));
     }
     cb(null, true);
-  }
+  },
 });
 
-// Helper function to find the most relevant value from OCR lines based on proximity
-function findValueByLabel(ocrLines, labelText, isAmount = false) {
-  // Find the line containing the label
-  const labelLine = ocrLines.find(line => 
-    line.LineText.toLowerCase().includes(labelText.toLowerCase())
-  );
-  
-  if (!labelLine) return null;
-  
-  // Find values near the label based on MinTop position
-  const nearbyLines = ocrLines.filter(line => 
-    Math.abs(line.MinTop - labelLine.MinTop) < 50 && // Within 50px vertically
-    !line.LineText.toLowerCase().includes(labelText.toLowerCase()) && // Not the label itself
-    (isAmount ? /^[\d,.]+$/.test(line.LineText.trim()) : true) // If looking for amount, ensure it looks like a number
-  );
-  
-  // Sort by vertical proximity and return the closest value
-  if (nearbyLines.length > 0) {
-    nearbyLines.sort((a, b) => Math.abs(a.MinTop - labelLine.MinTop) - Math.abs(b.MinTop - labelLine.MinTop));
-    const value = nearbyLines[0].LineText.trim();
-    return isAmount ? parseFloat(value.replace(/,/g, '')) : value;
+async function extractInvoiceDataFromBuffer(buffer, mimeType) {
+  console.log("Extracting text from file using OCR.space...");
+
+  const formData = new FormData();
+  formData.append("apikey", OCR_SPACE_API_KEY);
+  formData.append("language", "eng");
+  formData.append("isTable", "true");
+  formData.append("detectOrientation", "true");
+  formData.append("scale", "true");
+  formData.append("OCREngine", "2");
+  formData.append("file", buffer, {
+    filename: `invoice.${mimeType.split("/")[1]}`,
+    contentType: mimeType,
+  });
+
+  try {
+    // OCR Extraction
+    const ocrResponse = await axios.post(
+      "https://api.ocr.space/parse/image",
+      formData,
+      { headers: { ...formData.getHeaders() } }
+    );
+
+    if (!ocrResponse.data?.ParsedResults?.[0]?.ParsedText) {
+      throw new Error("Invalid OCR response format");
+    }
+
+    const rawText = ocrResponse.data.ParsedResults[0].ParsedText;
+
+    // Ollama LLM Extraction
+    let ollamaData = await callOllamaForExtraction(rawText);
+
+    // Post-processing and corrections
+    const extractedData = cleanAndCorrectExtractedData(ollamaData, rawText);
+
+    // Step 4: Retry if critical fields are missing
+    const retryNeeded =
+      !extractedData.amount ||
+      !extractedData.gst_amount ||
+      extractedData.gst_amount === 0 ||
+      extractedData.gst_rate === null;
+
+    if (retryNeeded) {
+      console.warn("Retrying Ollama extraction with focused prompt...");
+      const retryPrompt = `Please extract and only return the following fields from this invoice:\n\n"${rawText}"\n\nReturn a JSON with strictly:\n- amount (final total including GST)\n- gst_amount (total GST amount from CGST + SGST etc)\n- gst_rate (total %)\n\nIf missing, infer from tax lines. Format output as JSON only.`;
+      const retryResponse = await axios.post(
+        "http://host.docker.internal:11434/api/generate",
+        {
+          model: "deepseek-r1:1.5b",
+          prompt: retryPrompt,
+          format: "json",
+          stream: false,
+        },
+        {
+          headers: { "Content-Type": "application/json" },
+        }
+      );
+
+      try {
+        const retryData = JSON.parse(retryResponse.data.response);
+        extractedData.amount = retryData.amount || extractedData.amount;
+        extractedData.gst_amount =
+          retryData.gst_amount || extractedData.gst_amount;
+        extractedData.gst_rate = retryData.gst_rate || extractedData.gst_rate;
+      } catch (err) {
+        console.warn("Retry JSON parse failed, using fallback data");
+      }
+    }
+
+    return extractedData;
+  } catch (error) {
+    console.error("Error processing invoice:", error.message);
+    throw new Error(`Processing failed: ${error.message}`);
   }
-  
-  return null;
 }
 
-// Helper function to extract invoice details using OCR.space API
-async function extractInvoiceDataFromBuffer(buffer, mimeType) {
-  console.log('Extracting text from file using OCR.space...');
-  
-  // Prepare form data for OCR.space API
-  const formData = new FormData();
-  formData.append('apikey', OCR_SPACE_API_KEY);
-  formData.append('language', 'eng');
-  formData.append('isTable', 'true');
-  formData.append('detectOrientation', 'true');
-  formData.append('scale', 'true');
-  formData.append('OCREngine', '2'); // More accurate engine
-  formData.append('file', buffer, {
-    filename: 'invoice.pdf',
-    contentType: mimeType
-  });
-  
-  try {
-    // Call OCR.space API
-    const response = await axios.post('https://api.ocr.space/parse/image', formData, {
-      headers: {
-        ...formData.getHeaders(),
-      }
-    });
-    
-    console.log('OCR.space API response received');
-    
-    if (!response.data?.ParsedResults?.[0]?.TextOverlay?.Lines) {
-      throw new Error('Invalid OCR response format');
-    }
-    
-    const ocrLines = response.data.ParsedResults[0].TextOverlay.Lines;
-    const rawText = response.data.ParsedResults[0].ParsedText;
-    
-    console.log('Extracted OCR lines:', ocrLines.length);
-    
-    // Extract invoice data by looking for specific labels and their nearby values
-    // Invoice Number
-    const invoiceNumber = findValueByLabel(ocrLines, 'invoice no') || 
-                          findValueByLabel(ocrLines, 'invoice number') ||
-                          findValueByLabel(ocrLines, 'bill no') ||
-                          `INV-${Date.now().toString().slice(-6)}`;
-    
-    // Invoice Date
-    const dateMatch = findValueByLabel(ocrLines, 'date') || 
-                      findValueByLabel(ocrLines, 'invoice date');
-    
-    let invoiceDate;
-    if (dateMatch) {
-      // Try to parse various date formats
-      try {
-        invoiceDate = new Date(dateMatch).toISOString().split('T')[0];
-        // Check if valid date
-        if (invoiceDate === 'Invalid Date' || invoiceDate === null) {
-          invoiceDate = new Date().toISOString().split('T')[0];
-        }
-      } catch {
-        invoiceDate = new Date().toISOString().split('T')[0];
-      }
-    } else {
-      invoiceDate = new Date().toISOString().split('T')[0];
-    }
-    
-    // Vendor Name
-    const vendorName = findValueByLabel(ocrLines, 'seller') ||
-                       findValueByLabel(ocrLines, 'vendor') ||
-                       findValueByLabel(ocrLines, 'from') ||
-                       findValueByLabel(ocrLines, 'supplier') ||
-                       "Unknown Vendor";
-    
-    // Vendor GSTIN
-    const vendorGstin = findValueByLabel(ocrLines, 'gstin') || 
-                        findValueByLabel(ocrLines, 'gst no') ||
-                        null;
-    
-    // Amount (looking for "total", "amount", "grand total", etc.)
-    let amount = findValueByLabel(ocrLines, 'total amount after tax', true) ||
-                 findValueByLabel(ocrLines, 'grand total', true) ||
-                 findValueByLabel(ocrLines, 'total amount', true) ||
-                 findValueByLabel(ocrLines, 'amount', true) ||
-                 0;
-    
-    // GST Amount 
-    let gstAmount = findValueByLabel(ocrLines, 'total tax', true) ||
-                    findValueByLabel(ocrLines, 'igst', true) ||
-                    findValueByLabel(ocrLines, 'sgst', true) ||
-                    findValueByLabel(ocrLines, 'cgst', true) ||
-                    findValueByLabel(ocrLines, 'gst', true) ||
-                    0;
-    
-    if (gstAmount === 0 && amount > 0) {
-      // Estimate GST as roughly 18% of the total amount
-      gstAmount = Math.round(amount * 0.15);
-    }
-    
-    // GST Rate (percentage)
-    let gstRate = null;
-    
-    // Look for GST rate patterns like "18%" or "18 %"
-    const gstRateRegex = /(\d+)\s*%/;
-    for (const line of ocrLines) {
-      if (line.LineText.toLowerCase().includes('gst') || 
-          line.LineText.toLowerCase().includes('tax')) {
-        const match = line.LineText.match(gstRateRegex);
-        if (match) {
-          gstRate = parseInt(match[1]);
-          break;
-        }
+// ------------------------
+// SMART POST-PROCESSING
+// ------------------------
+
+function cleanAndCorrectExtractedData(ollamaData, rawText) {
+  let {
+    invoice_number,
+    invoice_date,
+    vendor_name,
+    vendor_gstin,
+    amount,
+    gst_amount,
+    gst_rate,
+  } = ollamaData;
+
+  // Parse numeric fields safely
+  amount = parseFloat(amount) || 0;
+  gst_amount = parseFloat(gst_amount) || 0;
+  gst_rate = parseFloat(gst_rate) || null;
+
+  // Invoice number fallback from text
+  if (!invoice_number && rawText) {
+    const match = rawText.match(
+      /invoice[\s_-]*no\.?[\s:-]*([A-Za-z0-9\/\-]+)/i
+    );
+    if (match) invoice_number = match[1].trim();
+  }
+
+  // Invoice date fallback
+  if (!invoice_date && rawText) {
+    const match = rawText.match(
+      /(?:dated|date)[\s:-]*([0-9]{1,2}[-\/][A-Za-z]{3,9}[-\/][0-9]{2,4})/i
+    );
+    if (match) {
+      const parsedDate = new Date(match[1]);
+      if (!isNaN(parsedDate)) {
+        invoice_date = parsedDate.toISOString().split("T")[0];
       }
     }
-    
-    // If GST rate not found but we have amount and GST amount, estimate it
-    if (gstRate === null && amount > 0 && gstAmount > 0) {
-      // Estimate GST rate based on the ratio
-      const baseAmount = amount - gstAmount;
-      if (baseAmount > 0) {
-        gstRate = Math.round((gstAmount / baseAmount) * 100);
-      }
-    }
-    
-    // Calculate confidence score based on how many fields were extracted
-    const extractedFields = [
-      invoiceNumber !== `INV-${Date.now().toString().slice(-6)}`, // Not default
-      dateMatch !== null,
-      vendorName !== "Unknown Vendor", // Not default
-      vendorGstin !== null,
-      amount > 0,
-      gstAmount > 0,
-      gstRate !== null
-    ];
-    
-    const confidenceScore = (extractedFields.filter(Boolean).length / extractedFields.length) * 100;
-    
-    // Create OCR data object to store all extracted information
-    const ocrData = {
+  }
+
+  // GSTIN fallback using regex
+  if (!vendor_gstin && rawText) {
+    const match = rawText.match(
+      /\b[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z]{1}[1-9A-Z]{1}Z[0-9A-Z]{1}\b/
+    );
+    if (match) vendor_gstin = match[0];
+  }
+
+  // Vendor name cleanup
+  if (vendor_name) {
+    vendor_name = vendor_name
+      .replace(/(Pvt\.?\s*Ltd\.?|LLP|Inc\.?|Corp\.?|Company|Co\.?)$/i, "")
+      .replace(/\s{2,}/g, " ")
+      .trim();
+  }
+
+  // GST Rate calculation if missing
+  if (!gst_rate && gst_amount && amount > gst_amount) {
+    const base = amount - gst_amount;
+    gst_rate = Math.round((gst_amount / base) * 100);
+  }
+
+  // GST Amount fallback
+  if (!gst_amount && amount && gst_rate) {
+    const base = amount / (1 + gst_rate / 100);
+    gst_amount = parseFloat((amount - base).toFixed(2));
+  }
+
+  // Amount fallback
+  if (!amount && gst_amount && gst_rate) {
+    const base = (gst_amount * 100) / gst_rate;
+    amount = parseFloat((base + gst_amount).toFixed(2));
+  }
+
+  return {
+    invoice_number: invoice_number || `INV-${Date.now().toString().slice(-6)}`,
+    invoice_date: invoice_date || new Date().toISOString().split("T")[0],
+    vendor_name: vendor_name || "Unknown Vendor",
+    vendor_gstin: vendor_gstin || null,
+    amount,
+    gst_amount,
+    gst_rate: gst_rate || null,
+    ocr_data: {
       raw_text: rawText,
       extraction_time: new Date().toISOString(),
-      identified_fields: extractedFields.filter(Boolean).length,
-      total_possible_fields: extractedFields.length,
-      parsed_lines: ocrLines
-    };
-    
-    return {
-      invoice_number: invoiceNumber,
-      invoice_date: invoiceDate,
-      vendor_name: vendorName,
-      vendor_gstin: vendorGstin,
-      amount: amount,
-      gst_amount: gstAmount,
-      gst_rate: gstRate,
-      confidence_score: confidenceScore,
-      ocr_data: ocrData
-    };
-  } catch (error) {
-    console.error('Error calling OCR.space API:', error);
-    throw new Error(`OCR processing failed: ${error.message}`);
-  }
+    },
+  };
 }
 
-// Unified invoice upload endpoint that handles both single and batch uploads
-app.post('/api/invoices/upload', upload.array('files', 10), async (req, res) => {
-  try {
-    if (!req.files || req.files.length === 0) {
-      return res.status(400).json({ 
-        error: 'No files uploaded',
-        success: false
-      });
-    }
+// Function to extract data using OCR.Space and Ollama
+// async function extractInvoiceDataFromBuffer(buffer, mimeType) {
+//   console.log("Extracting text from file using OCR.space...");
 
-    const { userId, invoiceType } = req.body;
-    
-    if (!userId) {
-      return res.status(400).json({ 
-        error: 'User ID is required',
-        success: false
-      });
-    }
-    
-    const isBatchUpload = req.files.length > 1;
-    console.log(`Processing ${req.files.length} file(s) for user ${userId}...`);
-    
-    // Process each file
-    const results = [];
-    const errors = [];
-    
-    for (const file of req.files) {
-      try {
-        console.log(`Processing file: ${file.originalname}`);
-        
-        // Upload file to Supabase Storage
-        const fileExt = file.originalname.substring(file.originalname.lastIndexOf('.'));
-        const fileName = `${userId}/${Date.now()}-${Math.random().toString(36).substring(2, 10)}${fileExt}`;
-        
-        const { data: uploadData, error: uploadError } = await supabase.storage
-          .from('invoices')
-          .upload(fileName, file.buffer, {
-            contentType: file.mimetype,
-            upsert: false
-          });
-        
-        if (uploadError) {
-          errors.push({ file: file.originalname, error: 'Failed to upload to storage' });
-          console.error('Error uploading to Supabase Storage:', uploadError);
-          continue;
-        }
-        
-        // Get the public URL for the uploaded file
-        const { data: { publicUrl } } = supabase.storage
-          .from('invoices')
-          .getPublicUrl(fileName);
-        
-        // Extract invoice data using OCR.space
-        const extractedData = await extractInvoiceDataFromBuffer(file.buffer, file.mimetype);
-        
-        // Determine invoice type based on provided type or keywords
-        let finalInvoiceType = invoiceType || 'unknown';
-        
-        // If no invoice type was explicitly provided, try to infer it from text content
-        if (!invoiceType && finalInvoiceType === 'unknown') {
-          const salesKeywords = ['sales', 'invoice', 'bill to', 'customer', 'sold to'];
-          const purchaseKeywords = ['purchase', 'vendor', 'supplier', 'bill from', 'bought from'];
-          
-          const lowerText = extractedData.ocr_data.raw_text.toLowerCase();
-          
-          if (salesKeywords.some(keyword => lowerText.includes(keyword))) {
-            finalInvoiceType = 'sales';
-          } else if (purchaseKeywords.some(keyword => lowerText.includes(keyword))) {
-            finalInvoiceType = 'purchase';
-          }
-        }
-        
-        // Create invoice record
-        const invoiceData = {
-          user_id: userId,
-          invoice_number: extractedData.invoice_number,
-          invoice_date: extractedData.invoice_date,
-          vendor_name: extractedData.vendor_name,
-          vendor_gstin: extractedData.vendor_gstin,
-          amount: extractedData.amount,
-          gst_amount: extractedData.gst_amount,
-          gst_rate: extractedData.gst_rate,
-          type: finalInvoiceType,
-          processing_status: 'pending',
-          reconciliation_status: 'pending',
-          confidence_score: extractedData.confidence_score,
-          ocr_data: extractedData.ocr_data,
-          file_url: publicUrl
-        };
-        
-        const { data: dbData, error: dbError } = await supabase
-          .from('invoices')
-          .insert([invoiceData])
-          .select();
-        
-        if (dbError) {
-          errors.push({ file: file.originalname, error: 'Failed to save to database' });
-          console.error('Error storing invoice in database:', dbError);
-          continue;
-        }
-        
-        results.push({
-          filename: file.originalname,
-          invoice_id: dbData[0].id,
-          type: finalInvoiceType,
-          confidence_score: extractedData.confidence_score
-        });
-        
-      } catch (fileError) {
-        errors.push({ file: file.originalname, error: fileError.message });
-        console.error(`Error processing file ${file.originalname}:`, fileError);
+//   // Step 1: Extract raw text with OCR.Space
+//   const formData = new FormData();
+//   formData.append("apikey", OCR_SPACE_API_KEY);
+//   formData.append("language", "eng");
+//   formData.append("isTable", "true");
+//   formData.append("detectOrientation", "true");
+//   formData.append("scale", "true");
+//   formData.append("OCREngine", "2");
+//   formData.append("file", buffer, {
+//     filename: `invoice.${mimeType.split("/")[1]}`,
+//     contentType: mimeType,
+//   });
+
+//   try {
+//     const ocrResponse = await axios.post(
+//       "https://api.ocr.space/parse/image",
+//       formData,
+//       { headers: { ...formData.getHeaders() } }
+//     );
+
+//     if (!ocrResponse.data?.ParsedResults?.[0]?.ParsedText) {
+//       throw new Error("Invalid OCR response format");
+//     }
+
+//     const rawText = ocrResponse.data.ParsedResults[0].ParsedText;
+
+//     // Step 2: Send raw text to Ollama for structured extraction
+//     const ollamaResponse = await axios.post(
+//       "http://host.docker.internal:11434/api/generate",
+//       {
+//         model: "deepseek-r1:1.5b",
+//         prompt: `Extract invoice_number, invoice_date, vendor_name, vendor_gstin, amount, gst_amount from:\n"""${rawText}"""\nReturn a JSON object. If any value is missing, try to infer or return null. Calculate GST (18%) if missing.`,
+//         format: "json",
+//         stream: false,
+//       },
+//       {
+//         headers: { "Content-Type": "application/json" },
+//       }
+//     );
+
+//     // Handle Ollama response
+//     const rawOllamaOutput = ollamaResponse?.data?.response;
+//     let ollamaData = {};
+
+//     try {
+//       ollamaData = JSON.parse(rawOllamaOutput);
+//     } catch (err) {
+//       console.error("Failed to parse Ollama JSON:", rawOllamaOutput);
+//       throw new Error("Ollama response parsing failed");
+//     }
+
+//     // Step 3: Prepare extracted data with defaults if missing
+//     const extractedData = {
+//       invoice_number:
+//         ollamaData.invoice_number || `INV-${Date.now().toString().slice(-6)}`,
+//       invoice_date:
+//         ollamaData.invoice_date || new Date().toISOString().split("T")[0],
+//       vendor_name: ollamaData.vendor_name || "Unknown Vendor",
+//       vendor_gstin: ollamaData.vendor_gstin || null,
+//       amount: ollamaData.amount || 0,
+//       gst_amount: ollamaData.gst_amount || 0,
+//       ocr_data: {
+//         raw_text: rawText,
+//         extraction_time: new Date().toISOString(),
+//       },
+//     };
+
+//     return extractedData;
+//   } catch (error) {
+//     console.error("Error processing invoice:", error.message);
+//     throw new Error(`Processing failed: ${error.message}`);
+//   }
+// }
+
+// Invoice upload endpoint
+app.post(
+  "/api/invoices/upload",
+  upload.array("files", 10),
+  async (req, res) => {
+    try {
+      if (!req.files || req.files.length === 0) {
+        return res
+          .status(400)
+          .json({ error: "No files uploaded", success: false });
       }
-    }
-    
-    // Respond based on single vs batch upload
-    if (isBatchUpload) {
+
+      const { userId, invoiceType } = req.body;
+
+      if (!userId) {
+        return res
+          .status(400)
+          .json({ error: "User ID is required", success: false });
+      }
+
+      console.log(
+        `Processing ${req.files.length} file(s) for user ${userId}...`
+      );
+
+      const results = [];
+      const errors = [];
+
+      // Process each file one by one
+      for (const file of req.files) {
+        try {
+          console.log(`Processing file: ${file.originalname}`);
+
+          // Upload file to Supabase Storage
+          const fileExt = file.originalname.substring(
+            file.originalname.lastIndexOf(".")
+          );
+          const fileName = `${userId}/${Date.now()}-${Math.random()
+            .toString(36)
+            .substring(2, 10)}${fileExt}`;
+
+          const { data: uploadData, error: uploadError } =
+            await supabase.storage
+              .from("invoices")
+              .upload(fileName, file.buffer, {
+                contentType: file.mimetype,
+                upsert: false,
+              });
+
+          if (uploadError) {
+            errors.push({
+              file: file.originalname,
+              error: "Failed to upload to storage",
+            });
+            console.error("Upload error:", uploadError);
+            continue;
+          }
+
+          const {
+            data: { publicUrl },
+          } = supabase.storage.from("invoices").getPublicUrl(fileName);
+
+          // Extract data using OCR.Space and Ollama
+          const extractedData = await extractInvoiceDataFromBuffer(
+            file.buffer,
+            file.mimetype
+          );
+
+          // Determine invoice type
+          let finalInvoiceType = invoiceType || "unknown";
+          if (!invoiceType && finalInvoiceType === "unknown") {
+            const lowerText = extractedData.ocr_data.raw_text.toLowerCase();
+            if (
+              ["sales", "invoice", "bill to"].some((k) => lowerText.includes(k))
+            ) {
+              finalInvoiceType = "sales";
+            } else if (
+              ["purchase", "vendor", "supplier"].some((k) =>
+                lowerText.includes(k)
+              )
+            ) {
+              finalInvoiceType = "purchase";
+            }
+          }
+
+          // Prepare invoice data for Supabase
+          const invoiceData = {
+            user_id: userId,
+            invoice_number: extractedData.invoice_number,
+            invoice_date: extractedData.invoice_date,
+            vendor_name: extractedData.vendor_name,
+            vendor_gstin: extractedData.vendor_gstin,
+            amount: extractedData.amount,
+            gst_amount: extractedData.gst_amount,
+            type: finalInvoiceType,
+            processing_status: "processed",
+            reconciliation_status: "pending",
+            confidence_score: 100, // Ollama-based, assume high confidence
+            ocr_data: extractedData.ocr_data,
+            file_url: publicUrl,
+          };
+
+          // Save to Supabase
+          const { data: dbData, error: dbError } = await supabase
+            .from("invoices")
+            .insert([invoiceData])
+            .select();
+
+          if (dbError) {
+            errors.push({
+              file: file.originalname,
+              error: "Failed to save to database",
+            });
+            console.error("Database error:", dbError);
+            continue;
+          }
+
+          results.push({
+            filename: file.originalname,
+            invoice_id: dbData[0].id,
+            type: finalInvoiceType,
+            confidence_score: invoiceData.confidence_score,
+          });
+        } catch (fileError) {
+          errors.push({ file: file.originalname, error: fileError.message });
+          console.error(`Error processing ${file.originalname}:`, fileError);
+        }
+      }
+
       res.status(201).json({
         message: `Processed ${results.length} of ${req.files.length} invoices successfully`,
         processed: results,
         errors: errors.length > 0 ? errors : undefined,
-        success: results.length > 0
+        success: results.length > 0,
       });
-    } else {
-      // Single file upload response
-      if (results.length > 0) {
-        res.status(201).json({
-          message: 'Invoice uploaded and processed successfully',
-          invoice: results[0],
-          success: true
-        });
-      } else {
-        // All single files failed
-        res.status(500).json({ 
-          error: 'Failed to process invoice', 
-          details: errors[0]?.error || 'Unknown error',
-          success: false
-        });
-      }
+    } catch (error) {
+      console.error("Error processing upload:", error);
+      res.status(500).json({
+        error: "Failed to process invoice upload",
+        details: error.message,
+        success: false,
+      });
     }
-    
-  } catch (error) {
-    console.error('Error processing upload:', error);
-    res.status(500).json({ 
-      error: 'Failed to process invoice upload', 
-      details: error.message,
-      success: false
-    });
   }
-});
+);
 
 // Health check endpoint
-app.get('/api/health', (req, res) => {
-  res.json({ status: 'API is running' });
+app.get("/api/health", (req, res) => {
+  res.json({ status: "API is running" });
 });
 
 // Start the server

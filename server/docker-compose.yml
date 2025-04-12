@@ -1,0 +1,13 @@
+version: '3.8'
+
+services:
+  backend:
+    build: .
+    volumes:
+      - .:/app
+      - /app/node_modules  # prevent overwrite of node_modules
+    ports:
+      - "5000:5000"
+    command: npx nodemon index.js
+    env_file:
+      - .env
