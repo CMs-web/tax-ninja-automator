@@ -7,7 +7,7 @@ import { Progress } from "@/components/ui/progress";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/useAuth";
-import { Upload, Check, AlertCircle, AlertTriangle } from "lucide-react";
+import { Upload, Check, AlertCircle } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 
 const API_BASE_URL = "http://localhost:5000/api";
@@ -16,8 +16,7 @@ const InvoiceUpload = () => {
   const [files, setFiles] = useState<File[]>([]);
   const [uploading, setUploading] = useState(false);
   const [progress, setProgress] = useState(0);
-  const [uploadStatus, setUploadStatus] = useState<'idle' | 'uploading' | 'success' | 'error' | 'warning'>('idle');
-  const [results, setResults] = useState<any[]>([]);
+  const [uploadStatus, setUploadStatus] = useState<'idle' | 'uploading' | 'success' | 'error'>('idle');
   const { user } = useAuth();
   const { toast } = useToast();
   const navigate = useNavigate();
@@ -54,7 +53,6 @@ const InvoiceUpload = () => {
     setUploading(true);
     setUploadStatus('uploading');
     setProgress(0);
-    setResults([]);
 
     try {
       // Create FormData with all files
@@ -67,90 +65,43 @@ const InvoiceUpload = () => {
       
       formData.append('userId', user.id);
       
-      // Track progress
-      const totalFiles = files.length;
-      let processedFiles = 0;
-      const updateProgress = () => {
-        processedFiles++;
-        const newProgress = Math.round((processedFiles / totalFiles) * 100);
-        setProgress(newProgress);
-      };
-      
-      // Process files one by one to track progress accurately
-      const processedResults = [];
-      for (let i = 0; i < files.length; i++) {
-        const singleFormData = new FormData();
-        singleFormData.append('files', files[i]);
-        singleFormData.append('userId', user.id);
-        
-        // Upload file using unified API endpoint
-        const response = await fetch(`${API_BASE_URL}/invoices/upload`, {
-          method: 'POST',
-          body: singleFormData,
+      // Simulate progress for better user experience
+      const simulateProgress = setInterval(() => {
+        setProgress(prev => {
+          const increment = Math.random() * 10;
+          const newProgress = Math.min(prev + increment, 95);
+          return newProgress;
         });
-        
-        const result = await response.json();
-        
-        if (!response.ok) {
-          processedResults.push({
-            fileName: files[i].name,
-            success: false,
-            error: result.error || result.details || 'Failed to upload invoice'
-          });
-        } else {
-          processedResults.push({
-            fileName: files[i].name,
-            success: true,
-            data: result.data || {},
-            invoiceId: result.data?.id || null,
-            hasMissingFields: checkForMissingFields(result.data)
-          });
-        }
-        
-        updateProgress();
+      }, 300);
+      
+      // Upload all files using unified API endpoint
+      const response = await fetch(`${API_BASE_URL}/invoices/upload`, {
+        method: 'POST',
+        body: formData,
+      });
+      
+      clearInterval(simulateProgress);
+      
+      const result = await response.json();
+      
+      if (!response.ok || !result.success) {
+        throw new Error(result.error || result.details || 'Failed to upload invoices');
       }
       
-      setResults(processedResults);
+      setProgress(100);
+      setUploadStatus('success');
       
-      // Determine overall status
-      const failedUploads = processedResults.filter(r => !r.success).length;
-      const withMissingFields = processedResults.filter(r => r.success && r.hasMissingFields).length;
-      
-      if (failedUploads > 0) {
-        if (failedUploads === files.length) {
-          setUploadStatus('error');
-          toast({
-            title: "Upload Failed",
-            description: `All ${files.length} files failed to process.`,
-            variant: "destructive",
-          });
-        } else {
-          setUploadStatus('warning');
-          toast({
-            title: "Partial Success",
-            description: `${files.length - failedUploads} of ${files.length} files were processed successfully.`,
-            variant: "default",
-          });
-        }
-      } else if (withMissingFields > 0) {
-        setUploadStatus('warning');
-        toast({
-          title: "Upload Complete with Warnings",
-          description: `${withMissingFields} ${withMissingFields === 1 ? 'invoice has' : 'invoices have'} missing or incomplete fields.`,
-          variant: "default",
-        });
-      } else {
-        setUploadStatus('success');
-        toast({
-          title: "Upload Successful",
-          description: `${files.length} ${files.length === 1 ? 'invoice has' : 'invoices have'} been processed successfully.`,
-          variant: "default",
-        });
-      }
-      
-      // Notify other components to refresh invoice lists
-      const event = new CustomEvent('invoice-uploaded');
-      window.dispatchEvent(event);
+      toast({
+        title: "Upload Successful",
+        description: `${result.processed?.length || 0} ${result.processed?.length === 1 ? 'invoice has' : 'invoices have'} been queued for processing.`,
+      });
+
+      // Reset form after short delay
+      setTimeout(() => {
+        setFiles([]);
+        const fileInput = document.getElementById('invoice-files') as HTMLInputElement;
+        if (fileInput) fileInput.value = '';
+      }, 2000);
 
     } catch (error) {
       setUploadStatus('error');
@@ -162,29 +113,11 @@ const InvoiceUpload = () => {
       });
     } finally {
       setUploading(false);
-      setProgress(100); // Ensure progress bar completes
     }
-  };
-  
-  const checkForMissingFields = (invoice: any) => {
-    if (!invoice) return true;
-    
-    return !invoice.invoice_number || 
-           !invoice.invoice_date || 
-           !invoice.vendor_name || 
-           !invoice.amount || 
-           !invoice.gst_amount ||
-           invoice.type === 'unknown';
   };
 
   const navigateToReview = () => {
     navigate('/invoices/review');
-  };
-  
-  const handleRetryAll = () => {
-    // Reset states and allow user to try upload again
-    setUploadStatus('idle');
-    setProgress(0);
   };
 
   return (
@@ -214,7 +147,6 @@ const InvoiceUpload = () => {
                   accept=".pdf,.jpg,.jpeg,.png,.webp" 
                   onChange={handleFileChange} 
                   className="max-w-xs"
-                  disabled={uploading}
                 />
                 {files.length > 0 && (
                   <div className="mt-4 text-sm">
@@ -245,22 +177,9 @@ const InvoiceUpload = () => {
                   <Check className="h-4 w-4 text-green-600" />
                   <AlertTitle className="text-green-800">Success!</AlertTitle>
                   <AlertDescription className="text-green-700">
-                    Your invoices have been uploaded and processed successfully. 
+                    Your invoices have been uploaded and queued for processing. 
                     <Button variant="link" className="p-0 h-auto font-semibold text-emerald-700" onClick={navigateToReview}>
-                      Review them now
-                    </Button>.
-                  </AlertDescription>
-                </Alert>
-              )}
-              
-              {uploadStatus === 'warning' && (
-                <Alert className="bg-amber-50 border-amber-200">
-                  <AlertTriangle className="h-4 w-4 text-amber-600" />
-                  <AlertTitle className="text-amber-800">Partial Success</AlertTitle>
-                  <AlertDescription className="text-amber-700">
-                    Some invoices were uploaded but have missing or incomplete data.
-                    <Button variant="link" className="p-0 h-auto font-semibold text-emerald-700" onClick={navigateToReview}>
-                      Review and edit them now
+                      Review them later
                     </Button>.
                   </AlertDescription>
                 </Alert>
@@ -271,57 +190,17 @@ const InvoiceUpload = () => {
                   <AlertCircle className="h-4 w-4" />
                   <AlertTitle>Error</AlertTitle>
                   <AlertDescription>
-                    There was a problem uploading your invoices.
-                    <Button 
-                      variant="link" 
-                      className="p-0 h-auto font-semibold text-white underline" 
-                      onClick={handleRetryAll}
-                    >
-                      Try again
-                    </Button>
+                    There was a problem uploading your invoices. Please try again.
                   </AlertDescription>
                 </Alert>
-              )}
-              
-              {results.length > 0 && (uploadStatus === 'warning' || uploadStatus === 'error') && (
-                <div className="mt-4 border rounded-md overflow-hidden">
-                  <div className="bg-gray-50 px-4 py-2 border-b">
-                    <h3 className="text-sm font-medium">Processing Results</h3>
-                  </div>
-                  <div className="divide-y">
-                    {results.map((result, index) => (
-                      <div key={index} className="px-4 py-3 flex items-center justify-between">
-                        <div>
-                          <p className="font-medium text-sm">{result.fileName}</p>
-                          {!result.success && (
-                            <p className="text-xs text-red-600">{result.error}</p>
-                          )}
-                          {result.success && result.hasMissingFields && (
-                            <p className="text-xs text-amber-600">Missing or incomplete fields</p>
-                          )}
-                        </div>
-                        {result.success && result.hasMissingFields && result.invoiceId && (
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() => navigate(`/invoices/review?id=${result.invoiceId}`)}
-                          >
-                            Edit
-                          </Button>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                </div>
               )}
 
               <div className="text-sm text-gray-500">
                 <h4 className="font-semibold mb-1">What happens next?</h4>
                 <ol className="list-decimal pl-5 space-y-1">
-                  <li>Files are uploaded and processed immediately</li>
+                  <li>Files are uploaded and queued for processing</li>
                   <li>Our OCR system extracts invoice data</li>
                   <li>You'll be able to review extracted data in the Invoice Review page</li>
-                  <li>Any missing or incomplete data can be edited manually</li>
                 </ol>
               </div>
             </CardContent>
