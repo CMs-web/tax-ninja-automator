@@ -78,6 +78,9 @@ async function extractInvoiceDataFromBuffer(buffer, mimeType) {
     // Post-processing and corrections
     const extractedData = cleanAndCorrectExtractedData(ollamaData, rawText);
 
+    // Initialize confidence score
+    extractedData.confidence_score = 100;
+
     // Step 4: Retry if critical fields are missing
     const retryNeeded =
       !extractedData.amount ||
@@ -86,6 +89,7 @@ async function extractInvoiceDataFromBuffer(buffer, mimeType) {
       extractedData.gst_rate === null;
 
     if (retryNeeded) {
+      extractedData.confidence_score = 50;
       console.warn("Retrying Ollama extraction with focused prompt...");
       const retryPrompt = `Please extract and only return the following fields from this invoice:\n\n"${rawText}"\n\nReturn a JSON with strictly:\n- amount (final total including GST)\n- gst_amount (total GST amount from CGST + SGST etc)\n- gst_rate (total %)\n\nIf missing, infer from tax lines. Format output as JSON only.`;
       const retryResponse = await axios.post(
@@ -132,6 +136,7 @@ function cleanAndCorrectExtractedData(ollamaData, rawText) {
     amount,
     gst_amount,
     gst_rate,
+    confidence_score,
   } = ollamaData;
 
   // Parse numeric fields safely
@@ -206,86 +211,9 @@ function cleanAndCorrectExtractedData(ollamaData, rawText) {
       raw_text: rawText,
       extraction_time: new Date().toISOString(),
     },
+    confidence_score,
   };
 }
-
-// Function to extract data using OCR.Space and Ollama
-// async function extractInvoiceDataFromBuffer(buffer, mimeType) {
-//   console.log("Extracting text from file using OCR.space...");
-
-//   // Step 1: Extract raw text with OCR.Space
-//   const formData = new FormData();
-//   formData.append("apikey", OCR_SPACE_API_KEY);
-//   formData.append("language", "eng");
-//   formData.append("isTable", "true");
-//   formData.append("detectOrientation", "true");
-//   formData.append("scale", "true");
-//   formData.append("OCREngine", "2");
-//   formData.append("file", buffer, {
-//     filename: `invoice.${mimeType.split("/")[1]}`,
-//     contentType: mimeType,
-//   });
-
-//   try {
-//     const ocrResponse = await axios.post(
-//       "https://api.ocr.space/parse/image",
-//       formData,
-//       { headers: { ...formData.getHeaders() } }
-//     );
-
-//     if (!ocrResponse.data?.ParsedResults?.[0]?.ParsedText) {
-//       throw new Error("Invalid OCR response format");
-//     }
-
-//     const rawText = ocrResponse.data.ParsedResults[0].ParsedText;
-
-//     // Step 2: Send raw text to Ollama for structured extraction
-//     const ollamaResponse = await axios.post(
-//       "http://host.docker.internal:11434/api/generate",
-//       {
-//         model: "deepseek-r1:1.5b",
-//         prompt: `Extract invoice_number, invoice_date, vendor_name, vendor_gstin, amount, gst_amount from:\n"""${rawText}"""\nReturn a JSON object. If any value is missing, try to infer or return null. Calculate GST (18%) if missing.`,
-//         format: "json",
-//         stream: false,
-//       },
-//       {
-//         headers: { "Content-Type": "application/json" },
-//       }
-//     );
-
-//     // Handle Ollama response
-//     const rawOllamaOutput = ollamaResponse?.data?.response;
-//     let ollamaData = {};
-
-//     try {
-//       ollamaData = JSON.parse(rawOllamaOutput);
-//     } catch (err) {
-//       console.error("Failed to parse Ollama JSON:", rawOllamaOutput);
-//       throw new Error("Ollama response parsing failed");
-//     }
-
-//     // Step 3: Prepare extracted data with defaults if missing
-//     const extractedData = {
-//       invoice_number:
-//         ollamaData.invoice_number || `INV-${Date.now().toString().slice(-6)}`,
-//       invoice_date:
-//         ollamaData.invoice_date || new Date().toISOString().split("T")[0],
-//       vendor_name: ollamaData.vendor_name || "Unknown Vendor",
-//       vendor_gstin: ollamaData.vendor_gstin || null,
-//       amount: ollamaData.amount || 0,
-//       gst_amount: ollamaData.gst_amount || 0,
-//       ocr_data: {
-//         raw_text: rawText,
-//         extraction_time: new Date().toISOString(),
-//       },
-//     };
-
-//     return extractedData;
-//   } catch (error) {
-//     console.error("Error processing invoice:", error.message);
-//     throw new Error(`Processing failed: ${error.message}`);
-//   }
-// }
 
 // Invoice upload endpoint
 app.post(
@@ -313,6 +241,29 @@ app.post(
 
       const results = [];
       const errors = [];
+
+      // Check for duplicate invoices after extraction
+      for (const file of req.files) {
+        const extractedData = await extractInvoiceDataFromBuffer(
+          file.buffer,
+          file.mimetype
+        );
+
+        const { data: existingInvoice } = await supabase
+          .from("invoices")
+          .select("*")
+          .eq("user_id", userId)
+          .eq("invoice_number", extractedData.invoice_number)
+          .eq("invoice_date", extractedData.invoice_date);
+
+        if (existingInvoice?.length > 0) {
+          errors.push({
+            file: file.originalname,
+            error: "Duplicate invoice (already exists)",
+          });
+          continue;
+        }
+      }
 
       // Process each file one by one
       for (const file of req.files) {
