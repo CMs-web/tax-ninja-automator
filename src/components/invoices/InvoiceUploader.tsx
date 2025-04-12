@@ -86,7 +86,7 @@ const InvoiceUploader = () => {
         toast({
           title: "Duplicate Invoice",
           description: `This invoice appears to be a duplicate of an existing invoice.`,
-          variant: "warning",
+          variant: "default", // Changed from "warning" to "default"
         });
         return;
       }
@@ -95,7 +95,7 @@ const InvoiceUploader = () => {
         toast({
           title: "Possible Duplicate",
           description: "This invoice is similar to one you've already uploaded. Please check carefully.",
-          variant: "warning",
+          variant: "default", // Changed from "warning" to "default"
         });
       }
       
@@ -116,7 +116,7 @@ const InvoiceUploader = () => {
           toast({
             title: "Invoice Needs Review",
             description: `The invoice was uploaded but needs your review to verify the extracted data.`,
-            variant: "warning",
+            variant: "default", // Changed from "warning" to "default"
           });
         } else {
           setUploadStatus({ status: 'success' });
