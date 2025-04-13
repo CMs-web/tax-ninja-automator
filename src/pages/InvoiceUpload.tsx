@@ -1,5 +1,5 @@
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import DashboardLayout from "@/components/dashboard/DashboardLayout";
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -7,7 +7,7 @@ import { Progress } from "@/components/ui/progress";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/useAuth";
-import { Upload, Check, AlertCircle } from "lucide-react";
+import { Upload, Check, AlertCircle, RefreshCw } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 
 const API_BASE_URL = "http://localhost:5000/api";
@@ -15,18 +15,57 @@ const API_BASE_URL = "http://localhost:5000/api";
 const InvoiceUpload = () => {
   const [files, setFiles] = useState<File[]>([]);
   const [uploading, setUploading] = useState(false);
+  const [retrying, setRetrying] = useState(false);
   const [progress, setProgress] = useState(0);
   const [uploadStatus, setUploadStatus] = useState<'idle' | 'uploading' | 'success' | 'error'>('idle');
+  const [processedFiles, setProcessedFiles] = useState<number>(0);
+  const [totalFiles, setTotalFiles] = useState<number>(0);
   const { user } = useAuth();
   const { toast } = useToast();
   const navigate = useNavigate();
+
+  useEffect(() => {
+    // Reset progress when files change
+    if (files.length > 0) {
+      setTotalFiles(files.length);
+    }
+  }, [files]);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files) {
       // Convert FileList to array
       const fileArray = Array.from(e.target.files);
       setFiles(fileArray);
+      setUploadStatus('idle');
+      setProgress(0);
     }
+  };
+
+  const simulateProgress = () => {
+    setProgress(0);
+    setProcessedFiles(0);
+    
+    const interval = setInterval(() => {
+      setProgress(prevProgress => {
+        // Only increment progress up to 95% for visual indication that work is happening
+        const increment = Math.random() * 10;
+        const newProgress = Math.min(prevProgress + increment, 95);
+        
+        // Simulate file processing progress
+        const filesProcessed = Math.floor((newProgress / 100) * totalFiles);
+        if (filesProcessed > processedFiles) {
+          setProcessedFiles(filesProcessed);
+        }
+        
+        if (newProgress >= 95) {
+          clearInterval(interval);
+        }
+        
+        return newProgress;
+      });
+    }, 300);
+
+    return interval;
   };
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
@@ -52,8 +91,10 @@ const InvoiceUpload = () => {
     
     setUploading(true);
     setUploadStatus('uploading');
-    setProgress(0);
 
+    // Start progress simulation
+    const progressInterval = simulateProgress();
+    
     try {
       // Create FormData with all files
       const formData = new FormData();
@@ -65,22 +106,13 @@ const InvoiceUpload = () => {
       
       formData.append('userId', user.id);
       
-      // Simulate progress for better user experience
-      const simulateProgress = setInterval(() => {
-        setProgress(prev => {
-          const increment = Math.random() * 10;
-          const newProgress = Math.min(prev + increment, 95);
-          return newProgress;
-        });
-      }, 300);
-      
       // Upload all files using unified API endpoint
       const response = await fetch(`${API_BASE_URL}/invoices/upload`, {
         method: 'POST',
         body: formData,
       });
       
-      clearInterval(simulateProgress);
+      clearInterval(progressInterval);
       
       const result = await response.json();
       
@@ -88,13 +120,19 @@ const InvoiceUpload = () => {
         throw new Error(result.error || result.details || 'Failed to upload invoices');
       }
       
+      // Complete the progress to 100%
       setProgress(100);
+      setProcessedFiles(totalFiles);
       setUploadStatus('success');
       
       toast({
         title: "Upload Successful",
-        description: `${result.processed?.length || 0} ${result.processed?.length === 1 ? 'invoice has' : 'invoices have'} been queued for processing.`,
+        description: `${result.processed?.length || 0} ${result.processed?.length === 1 ? 'invoice has' : 'invoices have'} been processed successfully.`,
       });
+
+      // Dispatch event to notify other components
+      const event = new CustomEvent('invoice-uploaded');
+      window.dispatchEvent(event);
 
       // Reset form after short delay
       setTimeout(() => {
@@ -104,8 +142,10 @@ const InvoiceUpload = () => {
       }, 2000);
 
     } catch (error) {
+      clearInterval(progressInterval);
       setUploadStatus('error');
       console.error("Error uploading invoices:", error);
+      
       toast({
         title: "Upload Failed",
         description: error instanceof Error ? error.message : "There was an error uploading your invoices. Please try again.",
@@ -113,6 +153,70 @@ const InvoiceUpload = () => {
       });
     } finally {
       setUploading(false);
+    }
+  };
+
+  const handleRetry = async () => {
+    if (!user || files.length === 0) return;
+    
+    setRetrying(true);
+    setUploadStatus('uploading');
+    
+    // Start progress simulation
+    const progressInterval = simulateProgress();
+    
+    try {
+      // Create FormData with all files
+      const formData = new FormData();
+      
+      // Append each file
+      files.forEach(file => {
+        formData.append('files', file);
+      });
+      
+      formData.append('userId', user.id);
+      formData.append('isRetry', 'true'); // Signal that this is a retry
+      
+      // Upload all files using unified API endpoint
+      const response = await fetch(`${API_BASE_URL}/invoices/upload`, {
+        method: 'POST',
+        body: formData,
+      });
+      
+      clearInterval(progressInterval);
+      
+      const result = await response.json();
+      
+      if (!response.ok || !result.success) {
+        throw new Error(result.error || result.details || 'Failed to retry invoice processing');
+      }
+      
+      // Complete the progress to 100%
+      setProgress(100);
+      setProcessedFiles(totalFiles);
+      setUploadStatus('success');
+      
+      toast({
+        title: "Retry Successful",
+        description: `${result.processed?.length || 0} ${result.processed?.length === 1 ? 'invoice has' : 'invoices have'} been reprocessed successfully.`,
+      });
+
+      // Dispatch event to notify other components
+      const event = new CustomEvent('invoice-uploaded');
+      window.dispatchEvent(event);
+
+    } catch (error) {
+      clearInterval(progressInterval);
+      setUploadStatus('error');
+      console.error("Error retrying invoices:", error);
+      
+      toast({
+        title: "Retry Failed",
+        description: error instanceof Error ? error.message : "There was an error retrying your invoice processing. Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setRetrying(false);
     }
   };
 
@@ -165,10 +269,15 @@ const InvoiceUpload = () => {
               {uploadStatus === 'uploading' && (
                 <div className="space-y-2">
                   <div className="flex items-center justify-between mb-1">
-                    <span className="text-sm font-medium">Uploading...</span>
+                    <span className="text-sm font-medium">
+                      {retrying ? "Retrying..." : "Uploading & Processing..."}
+                    </span>
                     <span className="text-sm font-medium">{Math.round(progress)}%</span>
                   </div>
                   <Progress value={progress} className="h-2" />
+                  <p className="text-xs text-gray-500 text-center">
+                    {processedFiles} of {totalFiles} files processed
+                  </p>
                 </div>
               )}
 
@@ -177,30 +286,42 @@ const InvoiceUpload = () => {
                   <Check className="h-4 w-4 text-green-600" />
                   <AlertTitle className="text-green-800">Success!</AlertTitle>
                   <AlertDescription className="text-green-700">
-                    Your invoices have been uploaded and queued for processing. 
+                    Your invoices have been uploaded and processed successfully. 
                     <Button variant="link" className="p-0 h-auto font-semibold text-emerald-700" onClick={navigateToReview}>
-                      Review them later
+                      Review them now
                     </Button>.
                   </AlertDescription>
                 </Alert>
               )}
 
               {uploadStatus === 'error' && (
-                <Alert variant="destructive">
-                  <AlertCircle className="h-4 w-4" />
-                  <AlertTitle>Error</AlertTitle>
-                  <AlertDescription>
-                    There was a problem uploading your invoices. Please try again.
-                  </AlertDescription>
-                </Alert>
+                <div>
+                  <Alert variant="destructive">
+                    <AlertCircle className="h-4 w-4" />
+                    <AlertTitle>Error</AlertTitle>
+                    <AlertDescription>
+                      There was a problem processing your invoices.
+                    </AlertDescription>
+                  </Alert>
+                  <Button
+                    type="button" 
+                    variant="outline"
+                    className="mt-2 flex items-center gap-1"
+                    onClick={handleRetry}
+                    disabled={retrying}
+                  >
+                    <RefreshCw className="h-4 w-4" />
+                    Retry Processing
+                  </Button>
+                </div>
               )}
 
               <div className="text-sm text-gray-500">
                 <h4 className="font-semibold mb-1">What happens next?</h4>
                 <ol className="list-decimal pl-5 space-y-1">
-                  <li>Files are uploaded and queued for processing</li>
-                  <li>Our OCR system extracts invoice data</li>
-                  <li>You'll be able to review extracted data in the Invoice Review page</li>
+                  <li>Files are uploaded and processed by our OCR system</li>
+                  <li>Invoice data is extracted and stored in your account</li>
+                  <li>You'll be able to review and edit extracted data if needed</li>
                 </ol>
               </div>
             </CardContent>
@@ -215,7 +336,7 @@ const InvoiceUpload = () => {
               <Button
                 type="submit"
                 className="bg-emerald-600 hover:bg-emerald-700"
-                disabled={files.length === 0 || uploading}
+                disabled={files.length === 0 || uploading || retrying}
               >
                 {uploading ? "Uploading..." : "Upload All Invoices"}
               </Button>
