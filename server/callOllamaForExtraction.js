@@ -17,8 +17,7 @@ async function callOllamaForExtraction(rawText) {
         7. gst_rate: Total GST rate (e.g., 18% if 9% CGST + 9% SGST)
 
         Rules:
-        Invoice number is mandatory and it would be have different name like Invoice No, Invoice Number, Invoice ID,GSTIN/UIN, etc.
-
+        Invoice number is mandatory and it would be have different name like Invoice No, Invoice Number, Invoice ID, GSTIN/UIN, etc.
         - If only base amount and GST rate is present, calculate amount = base + gst_amount.
         - If total amount is present and GST is included, calculate gst_amount using reverse formula.
         - If GST amount and total both are given, calculate GST rate as (gst_amount / (amount - gst_amount)) * 100
