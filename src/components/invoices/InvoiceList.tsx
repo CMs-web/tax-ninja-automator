@@ -1,4 +1,3 @@
-
 import React, { useEffect, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -7,12 +6,15 @@ import {
   TableHeader, TableRow
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { FileText, Download, Trash2, AlertCircle, Info } from "lucide-react";
+import { 
+  FileText, Download, Trash2, AlertCircle, Info, Edit, RefreshCw, Save, X
+} from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { invoiceService } from "@/services/invoiceService";
 import { Invoice } from "@/types/service";
 import { useAuth } from "@/hooks/useAuth";
 import { format, parseISO } from "date-fns";
+import { Input } from "@/components/ui/input";
 
 interface InvoiceListProps {
   filters?: {
@@ -29,6 +31,9 @@ const InvoiceList: React.FC<InvoiceListProps> = ({
   const [filteredInvoices, setFilteredInvoices] = useState<Invoice[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [editingInvoiceId, setEditingInvoiceId] = useState<string | null>(null);
+  const [editedValues, setEditedValues] = useState<Partial<Invoice>>({});
+  const [retrying, setRetrying] = useState<Record<string, boolean>>({});
   const { user } = useAuth();
   const { toast } = useToast();
 
@@ -63,22 +68,18 @@ const InvoiceList: React.FC<InvoiceListProps> = ({
     }
   };
 
-  // Apply filters whenever invoices or filters change
   useEffect(() => {
     const applyFilters = () => {
       let result = [...invoices];
       
-      // Apply type filter
       if (filters.type !== 'all') {
         result = result.filter(invoice => invoice.type === filters.type);
       }
       
-      // Apply processing status filter
       if (filters.processingStatus !== 'all') {
         result = result.filter(invoice => invoice.processing_status === filters.processingStatus);
       }
       
-      // Apply reconciliation status filter
       if (filters.reconciliationStatus !== 'all') {
         result = result.filter(invoice => invoice.reconciliation_status === filters.reconciliationStatus);
       }
@@ -92,7 +93,6 @@ const InvoiceList: React.FC<InvoiceListProps> = ({
   useEffect(() => {
     fetchInvoices();
     
-    // Listen for invoice upload events
     const handleInvoiceUploaded = () => {
       fetchInvoices();
     };
@@ -118,7 +118,6 @@ const InvoiceList: React.FC<InvoiceListProps> = ({
         throw error;
       }
       
-      // Update the local state to remove the deleted invoice
       setInvoices(invoices.filter(invoice => invoice.id !== invoiceId));
       
       toast({
@@ -141,6 +140,118 @@ const InvoiceList: React.FC<InvoiceListProps> = ({
       title: "Refreshing Invoices",
       description: "Fetching the latest invoices from the database.",
     });
+  };
+
+  const startEditing = (invoice: Invoice) => {
+    setEditingInvoiceId(invoice.id);
+    setEditedValues({});
+  };
+
+  const cancelEditing = () => {
+    setEditingInvoiceId(null);
+    setEditedValues({});
+  };
+
+  const handleInputChange = (field: keyof Invoice, value: any) => {
+    setEditedValues(prev => ({
+      ...prev,
+      [field]: value
+    }));
+  };
+
+  const saveChanges = async (invoice: Invoice) => {
+    if (!user || Object.keys(editedValues).length === 0) {
+      cancelEditing();
+      return;
+    }
+    
+    try {
+      const updatedData = {
+        ...editedValues,
+        processing_status: 'reviewed' as const
+      };
+      
+      const { error } = await invoiceService.update(invoice.id, updatedData);
+      
+      if (error) {
+        throw error;
+      }
+
+      toast({
+        title: "Invoice Updated",
+        description: "Invoice data has been successfully updated.",
+      });
+      
+      fetchInvoices();
+      
+      cancelEditing();
+      
+    } catch (error) {
+      console.error("Error updating invoice:", error);
+      toast({
+        title: "Update Failed",
+        description: "There was an error updating the invoice. Please try again.",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const handleRetry = async (invoice: Invoice) => {
+    if (!user) return;
+    
+    setRetrying(prev => ({ ...prev, [invoice.id]: true }));
+    
+    try {
+      const { error } = await invoiceService.update(invoice.id, {
+        processing_status: 'pending'
+      });
+      
+      if (error) {
+        throw error;
+      }
+
+      try {
+        const response = await fetch(`http://localhost:5000/api/invoices/retry/${invoice.id}`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            userId: user.id,
+          }),
+        });
+        
+        if (!response.ok) {
+          const errorData = await response.json();
+          throw new Error(errorData.error || 'Failed to retry processing');
+        }
+        
+        const result = await response.json();
+        
+        if (result.success) {
+          toast({
+            title: "Retry Initiated",
+            description: "The invoice is being reprocessed. Results will appear shortly.",
+          });
+        }
+      } catch (retryError) {
+        console.error("Error calling retry API:", retryError);
+      }
+      
+      setTimeout(() => {
+        fetchInvoices();
+      }, 2000);
+      
+    } catch (error) {
+      console.error("Error retrying invoice processing:", error);
+      toast({
+        title: "Retry Failed",
+        description: "There was an error retrying the invoice processing. Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setRetrying(prev => ({ ...prev, [invoice.id]: false }));
+    }
   };
 
   const getStatusBadgeVariant = (status: string) => {
@@ -240,61 +351,193 @@ const InvoiceList: React.FC<InvoiceListProps> = ({
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {filteredInvoices.map((invoice) => (
-                  <TableRow key={invoice.id}>
-                    <TableCell>
-                      <Badge variant={invoice.type === 'sales' ? 'default' : invoice.type === 'purchase' ? 'secondary' : 'outline'}>
-                        {invoice.type === 'sales' ? 'Sales' : invoice.type === 'purchase' ? 'Purchase' : 'Unknown'}
-                      </Badge>
-                    </TableCell>
-                    <TableCell className="font-medium">
-                      {invoice.invoice_number}
-                      {getConfidenceIndicator(invoice.confidence_score)}
-                    </TableCell>
-                    <TableCell>{formatDate(invoice.invoice_date)}</TableCell>
-                    <TableCell>{invoice.vendor_name}</TableCell>
-                    <TableCell>
-                      <span className="text-xs font-mono">
-                        {invoice.vendor_gstin || '-'}
-                      </span>
-                    </TableCell>
-                    <TableCell>{formatCurrency(invoice.amount)}</TableCell>
-                    <TableCell>{formatCurrency(invoice.gst_amount)}</TableCell>
-                    <TableCell>{invoice.gst_rate ? `${invoice.gst_rate}%` : '-'}</TableCell>
-                    <TableCell>
-                      <Badge variant={getStatusBadgeVariant(invoice.processing_status)}>
-                        {invoice.processing_status.charAt(0).toUpperCase() + invoice.processing_status.slice(1)}
-                      </Badge>
-                    </TableCell>
-                    <TableCell>
-                      <Badge variant={getStatusBadgeVariant(invoice.reconciliation_status || 'pending')}>
-                        {(invoice.reconciliation_status || 'pending').charAt(0).toUpperCase() + (invoice.reconciliation_status || 'pending').slice(1)}
-                      </Badge>
-                    </TableCell>
-                    <TableCell className="text-right space-x-2">
-                      <Button size="icon" variant="ghost" asChild>
-                        <a href={invoice.file_url} target="_blank" rel="noopener noreferrer">
-                          <FileText className="h-4 w-4" />
-                          <span className="sr-only">View</span>
-                        </a>
-                      </Button>
-                      <Button size="icon" variant="ghost" asChild>
-                        <a href={invoice.file_url} download>
-                          <Download className="h-4 w-4" />
-                          <span className="sr-only">Download</span>
-                        </a>
-                      </Button>
-                      <Button 
-                        size="icon" 
-                        variant="ghost" 
-                        onClick={() => handleDelete(invoice.id)}
-                      >
-                        <Trash2 className="h-4 w-4" />
-                        <span className="sr-only">Delete</span>
-                      </Button>
-                    </TableCell>
-                  </TableRow>
-                ))}
+                {filteredInvoices.map((invoice) => {
+                  const isEditing = editingInvoiceId === invoice.id;
+                  const needsAttention = invoice.processing_status === 'failed' || 
+                                        invoice.confidence_score !== undefined && invoice.confidence_score < 60;
+                  return (
+                    <TableRow key={invoice.id} className={needsAttention ? "bg-amber-50" : ""}>
+                      <TableCell>
+                        {isEditing ? (
+                          <select 
+                            className="w-full rounded border p-1 text-sm"
+                            value={editedValues.type || invoice.type}
+                            onChange={e => handleInputChange('type', e.target.value)}
+                          >
+                            <option value="sales">Sales</option>
+                            <option value="purchase">Purchase</option>
+                            <option value="unknown">Unknown</option>
+                          </select>
+                        ) : (
+                          <Badge variant={invoice.type === 'sales' ? 'default' : invoice.type === 'purchase' ? 'secondary' : 'outline'}>
+                            {invoice.type === 'sales' ? 'Sales' : invoice.type === 'purchase' ? 'Purchase' : 'Unknown'}
+                          </Badge>
+                        )}
+                      </TableCell>
+                      <TableCell className="font-medium">
+                        {isEditing ? (
+                          <Input 
+                            className="w-24 h-8 text-sm"
+                            value={editedValues.invoice_number !== undefined ? editedValues.invoice_number : invoice.invoice_number || ''}
+                            onChange={e => handleInputChange('invoice_number', e.target.value)}
+                          />
+                        ) : (
+                          <>
+                            {invoice.invoice_number}
+                            {getConfidenceIndicator(invoice.confidence_score)}
+                          </>
+                        )}
+                      </TableCell>
+                      <TableCell>
+                        {isEditing ? (
+                          <Input 
+                            className="w-24 h-8 text-sm" 
+                            type="date"
+                            value={editedValues.invoice_date !== undefined ? editedValues.invoice_date : invoice.invoice_date || ''}
+                            onChange={e => handleInputChange('invoice_date', e.target.value)}
+                          />
+                        ) : (
+                          formatDate(invoice.invoice_date)
+                        )}
+                      </TableCell>
+                      <TableCell>
+                        {isEditing ? (
+                          <Input 
+                            className="w-32 h-8 text-sm"
+                            value={editedValues.vendor_name !== undefined ? editedValues.vendor_name : invoice.vendor_name || ''}
+                            onChange={e => handleInputChange('vendor_name', e.target.value)}
+                          />
+                        ) : (
+                          invoice.vendor_name
+                        )}
+                      </TableCell>
+                      <TableCell>
+                        {isEditing ? (
+                          <Input 
+                            className="w-32 h-8 text-sm font-mono"
+                            value={editedValues.vendor_gstin !== undefined ? editedValues.vendor_gstin : invoice.vendor_gstin || ''}
+                            onChange={e => handleInputChange('vendor_gstin', e.target.value)}
+                          />
+                        ) : (
+                          <span className="text-xs font-mono">
+                            {invoice.vendor_gstin || '-'}
+                          </span>
+                        )}
+                      </TableCell>
+                      <TableCell>
+                        {isEditing ? (
+                          <Input 
+                            className="w-24 h-8 text-sm"
+                            type="number"
+                            step="0.01"
+                            value={editedValues.amount !== undefined ? editedValues.amount : invoice.amount || 0}
+                            onChange={e => handleInputChange('amount', parseFloat(e.target.value))}
+                          />
+                        ) : (
+                          formatCurrency(invoice.amount)
+                        )}
+                      </TableCell>
+                      <TableCell>
+                        {isEditing ? (
+                          <Input 
+                            className="w-24 h-8 text-sm"
+                            type="number"
+                            step="0.01"
+                            value={editedValues.gst_amount !== undefined ? editedValues.gst_amount : invoice.gst_amount || 0}
+                            onChange={e => handleInputChange('gst_amount', parseFloat(e.target.value))}
+                          />
+                        ) : (
+                          formatCurrency(invoice.gst_amount)
+                        )}
+                      </TableCell>
+                      <TableCell>
+                        {isEditing ? (
+                          <Input 
+                            className="w-16 h-8 text-sm"
+                            type="number"
+                            step="0.1"
+                            value={editedValues.gst_rate !== undefined ? editedValues.gst_rate : invoice.gst_rate || 0}
+                            onChange={e => handleInputChange('gst_rate', parseFloat(e.target.value))}
+                          />
+                        ) : (
+                          invoice.gst_rate ? `${invoice.gst_rate}%` : '-'
+                        )}
+                      </TableCell>
+                      <TableCell>
+                        <Badge variant={getStatusBadgeVariant(invoice.processing_status)}>
+                          {invoice.processing_status.charAt(0).toUpperCase() + invoice.processing_status.slice(1)}
+                        </Badge>
+                      </TableCell>
+                      <TableCell>
+                        <Badge variant={getStatusBadgeVariant(invoice.reconciliation_status || 'pending')}>
+                          {(invoice.reconciliation_status || 'pending').charAt(0).toUpperCase() + (invoice.reconciliation_status || 'pending').slice(1)}
+                        </Badge>
+                      </TableCell>
+                      <TableCell className="text-right">
+                        {isEditing ? (
+                          <div className="flex justify-end space-x-1">
+                            <Button 
+                              size="icon" 
+                              variant="outline"
+                              onClick={() => saveChanges(invoice)}
+                              title="Save changes"
+                            >
+                              <Save className="h-4 w-4" />
+                            </Button>
+                            <Button 
+                              size="icon" 
+                              variant="ghost"
+                              onClick={cancelEditing}
+                              title="Cancel editing"
+                            >
+                              <X className="h-4 w-4" />
+                            </Button>
+                          </div>
+                        ) : (
+                          <div className="flex justify-end space-x-1">
+                            <Button size="icon" variant="ghost" asChild>
+                              <a href={invoice.file_url} target="_blank" rel="noopener noreferrer">
+                                <FileText className="h-4 w-4" />
+                                <span className="sr-only">View</span>
+                              </a>
+                            </Button>
+                            <Button size="icon" variant="ghost" asChild>
+                              <a href={invoice.file_url} download>
+                                <Download className="h-4 w-4" />
+                                <span className="sr-only">Download</span>
+                              </a>
+                            </Button>
+                            <Button
+                              size="icon"
+                              variant="ghost"
+                              onClick={() => startEditing(invoice)}
+                              title="Edit invoice"
+                            >
+                              <Edit className="h-4 w-4" />
+                            </Button>
+                            <Button
+                              size="icon"
+                              variant="ghost"
+                              onClick={() => handleRetry(invoice)}
+                              disabled={retrying[invoice.id] || invoice.processing_status === 'pending'}
+                              title="Retry processing"
+                            >
+                              <RefreshCw className={`h-4 w-4 ${retrying[invoice.id] ? 'animate-spin' : ''}`} />
+                            </Button>
+                            <Button 
+                              size="icon" 
+                              variant="ghost" 
+                              onClick={() => handleDelete(invoice.id)}
+                              title="Delete invoice"
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          </div>
+                        )}
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
               </TableBody>
             </Table>
           </div>
