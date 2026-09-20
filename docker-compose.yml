@@ -1,27 +1,18 @@
-version: "3.8"
+version: '3.8'
+
 services:
   backend:
-    build: .
-    container_name: tax_automation
+    build: ./server
     ports:
       - "5000:5000"
-    networks:
-      - tax_net
     env_file:
-      - .env
+      - ./server/.env     # 👈 This is the correct path
     volumes:
-      - .:/app
-    depends_on:
-      - ollama
+      - ./server:/app
+      - /app/node_modules
+    command: npx nodemon index.js
 
-  ollama:
-    image: ollama/ollama
-    container_name: ollama
+  extractor:
+    build: ./extractor
     ports:
-      - "11434:11434"
-    networks:
-      - tax_net
-
-networks:
-  tax_net:
-    driver: bridge
+      - "8000:8000"
